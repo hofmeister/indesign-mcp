@@ -1,0 +1,740 @@
+import type { McpServer } from '@modelcontextprotocol/server';
+import * as z from 'zod';
+import { itemSummary } from '../idml/inspect.ts';
+import {
+  arrangeItem,
+  createLine,
+  createOval,
+  createRectangle,
+  createTextFrame,
+  deleteItem,
+  duplicateItem,
+  findItem,
+  itemInfo,
+  itemSpreadBounds,
+  listItems,
+  moveItemTo,
+  renameItem,
+  resizeItem,
+  rotateItem,
+  setCornerRadius,
+  setFill,
+  setOpacity,
+  setStroke,
+  setTextFrameOptions,
+  type Target,
+  translateItem,
+} from '../idml/items.ts';
+import { findLayer, listLayers } from '../idml/layers.ts';
+import { findPage, listPages } from '../idml/pages.ts';
+import { styleSelf } from '../idml/styles.ts';
+import {
+  attr,
+  children,
+  type Element,
+  firstChild,
+  fragment,
+  propertiesOf,
+  removeElement,
+  setAttrs,
+} from '../idml/xml.ts';
+import type { ToolContext } from './context.ts';
+import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
+
+const targetParams = {
+  page: pageParam.optional().describe('Page to place the item on (default 1). Ignored when master is given.'),
+  master: z
+    .string()
+    .optional()
+    .describe('Put the item on this master page instead of a document page, e.g. "A-Master".'),
+};
+
+const placement = {
+  x: lengthParam.describe('Distance from the left edge of the page.'),
+  y: lengthParam.describe('Distance from the top edge of the page.'),
+  width: lengthParam,
+  height: lengthParam,
+};
+
+const appearance = {
+  name: z.string().optional().describe('A name to refer to the item later, e.g. "Headline".'),
+  layer: z.string().optional().describe('Layer name (default: the active layer).'),
+  fill: colorParam.optional(),
+  stroke: colorParam.optional(),
+  strokeWeight: z.number().min(0).optional().describe('Stroke weight in points.'),
+  rotation: z.number().optional().describe('Rotation in degrees (counter-clockwise).'),
+};
+
+function target(args: { page?: number | string; master?: string }): Target {
+  return args.master ? { master: args.master } : { page: args.page ?? 1 };
+}
+
+export function registerItemTools(server: McpServer, ctx: ToolContext): void {
+  const describe = (doc: import('../idml/document.ts').IdmlDocument, el: Element) => {
+    const found = findItem(doc, attr(el, 'Self')!);
+    const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
+    return itemSummary(found.info, ctx.unit, layers);
+  };
+
+  server.registerTool(
+    'list_items',
+    {
+      title: 'List items',
+      description:
+        'Lists the items (frames, shapes, images, text) on a page or in the whole document with names, ids, positions and sizes.',
+      inputSchema: z.object({
+        document: documentParam,
+        page: pageParam.optional(),
+        includeMasters: z.boolean().optional(),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ document, page, includeMasters }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
+        const items = listItems(doc, { page, includeMasters }).map((i) => ({
+          page: i.page,
+          master: i.onMaster,
+          ...itemSummary(i, ctx.unit, layers),
+        }));
+        const lines = items.map(
+          (i) =>
+            `${i.master ? `[master ${i.master}] ` : `p${i.page ?? '?'} `}${i.type}${i.name ? ` "${i.name}"` : ''} [${i.id}] ${i.position}, ${i.size}${i.text !== undefined ? `: "${i.text.slice(0, 60)}"` : ''}${i.image ? ` (${i.image})` : ''}`,
+        );
+        return ok(lines.join('\n') || 'No items', { items });
+      }),
+  );
+
+  server.registerTool(
+    'add_text_frame',
+    {
+      title: 'Add text frame',
+      description:
+        'Adds a text frame with text to a page. Positions are measured from the top-left corner of the page. Paragraphs are separated by newlines; **bold** and *italic* markup is supported. Give it a name so you can edit it later.',
+      inputSchema: z.object({
+        document: documentParam,
+        ...targetParams,
+        ...placement,
+        text: z.string().optional().describe('The text. Newlines start new paragraphs.'),
+        paragraphStyle: z.string().optional().describe('Paragraph style name to apply to all paragraphs.'),
+        columns: z.number().int().min(1).max(20).optional(),
+        gutter: lengthParam.optional(),
+        inset: lengthParam.optional().describe('Inset spacing on all sides.'),
+        verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
+        autoSize: z
+          .enum(['off', 'height', 'width', 'both'])
+          .optional()
+          .describe('Auto-size the frame to its text.'),
+        ...appearance,
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const el = createTextFrame(doc, target(args), {
+          rect: ctx.rect(args),
+          text: args.text,
+          paragraphStyle: args.paragraphStyle
+            ? styleSelf(doc, 'ParagraphStyle', args.paragraphStyle)
+            : undefined,
+          name: args.name,
+          layer: args.layer,
+          fill: args.fill,
+          stroke: args.stroke,
+          strokeWeight: args.strokeWeight,
+          rotation: args.rotation,
+          columns: args.columns,
+          gutter: ctx.ptOpt(args.gutter),
+          inset: ctx.ptOpt(args.inset),
+          verticalJustification: args.verticalJustification,
+          autoSize: args.autoSize,
+        });
+        ctx.save(doc);
+        const s = describe(doc, el);
+        return ok(
+          `Added text frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}${args.master ? ` on master ${args.master}` : ` on page ${args.page ?? 1}`}.`,
+          { item: s },
+        );
+      }),
+  );
+
+  const shapeSchema = z.object({
+    document: documentParam,
+    ...targetParams,
+    ...placement,
+    ...appearance,
+    cornerRadius: lengthParam.optional().describe('Rounded corners (rectangles only).'),
+  });
+
+  server.registerTool(
+    'add_rectangle',
+    {
+      title: 'Add rectangle',
+      description:
+        'Adds a rectangle (filled with Black unless fill is given; use fill "none" for an empty frame). To place a picture, use place_image instead.',
+      inputSchema: shapeSchema,
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const el = createRectangle(doc, target(args), {
+          rect: ctx.rect(args),
+          name: args.name,
+          layer: args.layer,
+          fill: args.fill,
+          stroke: args.stroke,
+          strokeWeight: args.strokeWeight,
+          rotation: args.rotation,
+        });
+        if (args.cornerRadius !== undefined) setCornerRadius(el, ctx.pt(args.cornerRadius));
+        ctx.save(doc);
+        const s = describe(doc, el);
+        return ok(`Added rectangle${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`, {
+          item: s,
+        });
+      }),
+  );
+
+  server.registerTool(
+    'add_ellipse',
+    {
+      title: 'Add ellipse',
+      description: 'Adds an ellipse/circle inside the given box.',
+      inputSchema: shapeSchema,
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const el = createOval(doc, target(args), {
+          rect: ctx.rect(args),
+          name: args.name,
+          layer: args.layer,
+          fill: args.fill,
+          stroke: args.stroke,
+          strokeWeight: args.strokeWeight,
+          rotation: args.rotation,
+        });
+        ctx.save(doc);
+        const s = describe(doc, el);
+        return ok(`Added ellipse${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`, {
+          item: s,
+        });
+      }),
+  );
+
+  server.registerTool(
+    'add_line',
+    {
+      title: 'Add line',
+      description: 'Adds a straight line (rule) between two points on a page.',
+      inputSchema: z.object({
+        document: documentParam,
+        ...targetParams,
+        x1: lengthParam,
+        y1: lengthParam,
+        x2: lengthParam,
+        y2: lengthParam,
+        name: z.string().optional(),
+        layer: z.string().optional(),
+        stroke: colorParam.optional().describe('Default Black.'),
+        strokeWeight: z.number().min(0).optional().describe('Default 1pt.'),
+        strokeType: z.string().optional().describe('solid, dashed, dotted, thick-thin, thin-thick, wavy'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const el = createLine(doc, target(args), {
+          from: { x: ctx.pt(args.x1), y: ctx.pt(args.y1) },
+          to: { x: ctx.pt(args.x2), y: ctx.pt(args.y2) },
+          name: args.name,
+          layer: args.layer,
+          stroke: args.stroke,
+          strokeWeight: args.strokeWeight,
+        });
+        if (args.strokeType) setStroke(doc, el, { type: args.strokeType });
+        ctx.save(doc);
+        const s = describe(doc, el);
+        return ok(`Added line${s.name ? ` "${s.name}"` : ''} [${s.id}].`, { item: s });
+      }),
+  );
+
+  server.registerTool(
+    'move_item',
+    {
+      title: 'Move item',
+      description: 'Moves an item to a position (from the top-left of its page) or by an offset (dx/dy).',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional().describe('Disambiguates items with the same name.'),
+        x: lengthParam.optional(),
+        y: lengthParam.optional(),
+        dx: lengthParam.optional(),
+        dy: lengthParam.optional(),
+        toPage: pageParam.optional().describe('Move the item to another page (keeps x/y unless given).'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        if (args.toPage !== undefined) {
+          const dest = findPage(doc, args.toPage);
+          const b = found.info.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+          const el = found.element;
+          const destSpread = doc.findBySelf(dest.spreadId)?.element;
+          if (!destSpread) throw new Error('Destination spread not found');
+          if (destSpread !== found.container) {
+            removeElement(el);
+            const { insertAfter } = require('../idml/xml.ts') as typeof import('../idml/xml.ts');
+            const imported = destSpread.ownerDocument!.importNode(el, true) as Element;
+            insertAfter(destSpread, imported);
+            moveItemTo(imported, {
+              x: dest.origin.x + (args.x !== undefined ? ctx.pt(args.x) : b.x),
+              y: dest.origin.y + (args.y !== undefined ? ctx.pt(args.y) : b.y),
+            });
+          } else {
+            moveItemTo(el, {
+              x: dest.origin.x + (args.x !== undefined ? ctx.pt(args.x) : b.x),
+              y: dest.origin.y + (args.y !== undefined ? ctx.pt(args.y) : b.y),
+            });
+          }
+        } else if (args.dx !== undefined || args.dy !== undefined) {
+          translateItem(found.element, ctx.ptOpt(args.dx) ?? 0, ctx.ptOpt(args.dy) ?? 0);
+        } else if (args.x !== undefined || args.y !== undefined) {
+          const page = found.info.page !== undefined ? findPage(doc, found.info.page) : undefined;
+          const origin = page?.origin ?? { x: 0, y: 0 };
+          const b = found.info.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+          moveItemTo(found.element, {
+            x: origin.x + (args.x !== undefined ? ctx.pt(args.x) : b.x),
+            y: origin.y + (args.y !== undefined ? ctx.pt(args.y) : b.y),
+          });
+        } else throw new Error('Give x/y, dx/dy or toPage');
+        ctx.save(doc);
+        const s = describe(doc, findItem(doc, found.info.id).element);
+        return ok(`Moved ${s.type}${s.name ? ` "${s.name}"` : ''} to ${s.position}.`, { item: s });
+      }),
+  );
+
+  server.registerTool(
+    'resize_item',
+    {
+      title: 'Resize item',
+      description: 'Changes the width and/or height of an item, keeping its top-left corner in place.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        width: lengthParam.optional(),
+        height: lengthParam.optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        resizeItem(found.element, ctx.ptOpt(args.width), ctx.ptOpt(args.height));
+        ctx.save(doc);
+        const s = describe(doc, found.element);
+        return ok(`Resized to ${s.size}.`, { item: s });
+      }),
+  );
+
+  server.registerTool(
+    'rotate_item',
+    {
+      title: 'Rotate item',
+      description: 'Sets the rotation of an item in degrees (counter-clockwise, around its center).',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        degrees: z.number(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        rotateItem(found.element, args.degrees);
+        ctx.save(doc);
+        return ok(`Rotated to ${args.degrees}°.`, { item: describe(doc, found.element) });
+      }),
+  );
+
+  server.registerTool(
+    'set_appearance',
+    {
+      title: 'Fill, stroke, corners, opacity',
+      description: 'Changes fill color, stroke (color, weight, type), corner radius and opacity of an item.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        fill: colorParam.optional(),
+        fillTint: z.number().min(0).max(100).optional(),
+        stroke: colorParam.optional(),
+        strokeWeight: z.number().min(0).optional(),
+        strokeType: z.string().optional(),
+        strokeAlignment: z.enum(['center', 'inside', 'outside']).optional(),
+        cornerRadius: lengthParam.optional(),
+        cornerShape: z.enum(['rounded', 'inverse-rounded', 'bevel', 'inset', 'fancy', 'none']).optional(),
+        opacity: z.number().min(0).max(100).optional(),
+        blendMode: z.string().optional().describe('Normal, Multiply, Screen, Overlay, Darken, Lighten…'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        const el = found.element;
+        if (args.fill !== undefined) setFill(doc, el, args.fill, args.fillTint);
+        if (
+          args.stroke !== undefined ||
+          args.strokeWeight !== undefined ||
+          args.strokeType ||
+          args.strokeAlignment
+        )
+          setStroke(doc, el, {
+            swatch: args.stroke,
+            weight: args.strokeWeight,
+            type: args.strokeType,
+            alignment: args.strokeAlignment,
+          });
+        if (args.cornerRadius !== undefined)
+          setCornerRadius(el, ctx.pt(args.cornerRadius), args.cornerShape ?? 'rounded');
+        if (args.opacity !== undefined || args.blendMode) setOpacity(el, args.opacity ?? 100, args.blendMode);
+        ctx.save(doc);
+        return ok('Appearance updated.', { item: describe(doc, el) });
+      }),
+  );
+
+  server.registerTool(
+    'delete_item',
+    {
+      title: 'Delete item',
+      description: 'Deletes an item (and its text story if it was a text frame).',
+      inputSchema: z.object({ document: documentParam, item: itemParam, page: pageParam.optional() }),
+      annotations: { destructiveHint: true },
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        deleteItem(doc, found.element);
+        ctx.save(doc);
+        return ok(
+          `Deleted ${found.info.type}${found.info.name ? ` "${found.info.name}"` : ''} [${found.info.id}].`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    'duplicate_item',
+    {
+      title: 'Duplicate item',
+      description:
+        'Duplicates an item, offset by dx/dy (default 5mm) or onto another page at the same position.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        dx: lengthParam.optional(),
+        dy: lengthParam.optional(),
+        toPage: pageParam.optional(),
+        name: z.string().optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        let clone: Element;
+        if (args.toPage !== undefined) {
+          const dest = findPage(doc, args.toPage);
+          clone = duplicateItem(doc, found, { x: 0, y: 0 });
+          const destSpread = doc.findBySelf(dest.spreadId)?.element;
+          if (!destSpread) throw new Error('Destination spread not found');
+          const b = found.info.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+          if (destSpread !== found.container) {
+            removeElement(clone);
+            const { insertAfter } = require('../idml/xml.ts') as typeof import('../idml/xml.ts');
+            clone = destSpread.ownerDocument!.importNode(clone, true) as Element;
+            insertAfter(destSpread, clone);
+          }
+          moveItemTo(clone, {
+            x: dest.origin.x + b.x + (ctx.ptOpt(args.dx) ?? 0),
+            y: dest.origin.y + b.y + (ctx.ptOpt(args.dy) ?? 0),
+          });
+        } else {
+          clone = duplicateItem(doc, found, {
+            x: ctx.ptOpt(args.dx) ?? ctx.pt(5),
+            y: ctx.ptOpt(args.dy) ?? ctx.pt(5),
+          });
+        }
+        if (args.name) renameItem(clone, args.name);
+        ctx.save(doc);
+        const s = describe(doc, clone);
+        return ok(`Duplicated as ${s.type}${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}.`, {
+          item: s,
+        });
+      }),
+  );
+
+  server.registerTool(
+    'rename_item',
+    {
+      title: 'Rename item',
+      description: 'Gives an item a name (or removes it).',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        name: z.string().optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        renameItem(found.element, args.name);
+        ctx.save(doc);
+        return ok(args.name ? `Renamed to "${args.name}".` : 'Name removed.');
+      }),
+  );
+
+  server.registerTool(
+    'arrange_item',
+    {
+      title: 'Arrange (z-order)',
+      description:
+        'Brings an item to the front / sends it to the back / one step forward or backward within its layer order.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        action: z.enum(['front', 'back', 'forward', 'backward']),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        arrangeItem(found.element, args.action);
+        ctx.save(doc);
+        return ok(`Moved ${args.action}.`);
+      }),
+  );
+
+  server.registerTool(
+    'set_item_layer',
+    {
+      title: 'Move item to layer',
+      description: 'Moves an item to another layer.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        layer: z.string(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        const layer = findLayer(doc, args.layer);
+        if (!layer) throw new Error(`Layer "${args.layer}" not found`);
+        found.element.setAttribute('ItemLayer', attr(layer, 'Self')!);
+        ctx.save(doc);
+        return ok(`Moved to layer "${attr(layer, 'Name')}".`);
+      }),
+  );
+
+  server.registerTool(
+    'align_items',
+    {
+      title: 'Align items',
+      description:
+        'Aligns items to the page or page margins: left, center, right, top, middle, bottom. Also distributes several items evenly.',
+      inputSchema: z.object({
+        document: documentParam,
+        items: z.array(itemParam).min(1),
+        page: pageParam.optional(),
+        to: z.enum(['page', 'margins']).default('page'),
+        horizontal: z.enum(['left', 'center', 'right']).optional(),
+        vertical: z.enum(['top', 'middle', 'bottom']).optional(),
+        distribute: z
+          .enum(['horizontal', 'vertical'])
+          .optional()
+          .describe('Distribute the items evenly between the outermost ones.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const founds = args.items.map((i) => findItem(doc, i, args.page));
+        const pageIndex = founds[0]!.info.page;
+        if (pageIndex === undefined) throw new Error('Items must be on a document page');
+        const page = findPage(doc, pageIndex);
+        const area =
+          args.to === 'margins'
+            ? {
+                x: page.origin.x + page.margins.left,
+                y: page.origin.y + page.margins.top,
+                width: page.width - page.margins.left - page.margins.right,
+                height: page.height - page.margins.top - page.margins.bottom,
+              }
+            : { x: page.origin.x, y: page.origin.y, width: page.width, height: page.height };
+        for (const f of founds) {
+          const b = itemSpreadBounds(f.element);
+          if (!b) continue;
+          let x = b.x;
+          let y = b.y;
+          if (args.horizontal === 'left') x = area.x;
+          if (args.horizontal === 'center') x = area.x + (area.width - b.width) / 2;
+          if (args.horizontal === 'right') x = area.x + area.width - b.width;
+          if (args.vertical === 'top') y = area.y;
+          if (args.vertical === 'middle') y = area.y + (area.height - b.height) / 2;
+          if (args.vertical === 'bottom') y = area.y + area.height - b.height;
+          moveItemTo(f.element, { x, y });
+        }
+        if (args.distribute && founds.length > 2) {
+          const sorted = founds
+            .map((f) => ({ f, b: itemSpreadBounds(f.element)! }))
+            .sort((a, b) => (args.distribute === 'horizontal' ? a.b.x - b.b.x : a.b.y - b.b.y));
+          const first = sorted[0]!.b;
+          const last = sorted.at(-1)!.b;
+          if (args.distribute === 'horizontal') {
+            const total = last.x + last.width - first.x;
+            const widths = sorted.reduce((s, o) => s + o.b.width, 0);
+            const gap = (total - widths) / (sorted.length - 1);
+            let x = first.x;
+            for (const o of sorted) {
+              moveItemTo(o.f.element, { x, y: o.b.y });
+              x += o.b.width + gap;
+            }
+          } else {
+            const total = last.y + last.height - first.y;
+            const heights = sorted.reduce((s, o) => s + o.b.height, 0);
+            const gap = (total - heights) / (sorted.length - 1);
+            let y = first.y;
+            for (const o of sorted) {
+              moveItemTo(o.f.element, { x: o.b.x, y });
+              y += o.b.height + gap;
+            }
+          }
+        }
+        ctx.save(doc);
+        return ok(`Aligned ${founds.length} item(s).`);
+      }),
+  );
+
+  server.registerTool(
+    'set_text_frame_options',
+    {
+      title: 'Text frame options',
+      description: 'Columns, gutter, inset spacing, vertical justification and auto-size of a text frame.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        columns: z.number().int().min(1).max(20).optional(),
+        gutter: lengthParam.optional(),
+        inset: lengthParam.optional(),
+        verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
+        autoSize: z.enum(['off', 'height', 'width', 'both']).optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        if (found.element.tagName !== 'TextFrame') throw new Error(`"${args.item}" is not a text frame`);
+        setTextFrameOptions(found.element, {
+          columns: args.columns,
+          gutter: ctx.ptOpt(args.gutter),
+          inset: ctx.ptOpt(args.inset),
+          verticalJustification: args.verticalJustification,
+          autoSize: args.autoSize,
+        });
+        ctx.save(doc);
+        return ok('Text frame options updated.');
+      }),
+  );
+
+  server.registerTool(
+    'set_text_wrap',
+    {
+      title: 'Text wrap',
+      description: 'Makes text in other frames flow around this item (bounding box wrap) or turns wrap off.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        mode: z.enum(['none', 'bounding-box', 'jump', 'next-column']),
+        offset: lengthParam.optional().describe('Distance between item and text.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        const el = found.element;
+        let pref = firstChild(el, 'TextWrapPreference');
+        if (!pref) {
+          pref = fragment(
+            el.ownerDocument!,
+            `<TextWrapPreference Inverse="false" ApplyToMasterPageOnly="false" TextWrapSide="BothSides" TextWrapMode="None"><Properties><TextWrapOffset Top="0" Left="0" Bottom="0" Right="0"/></Properties></TextWrapPreference>`,
+          );
+          el.appendChild(pref);
+        }
+        pref.setAttribute(
+          'TextWrapMode',
+          {
+            none: 'None',
+            'bounding-box': 'BoundingBoxTextWrap',
+            jump: 'JumpObjectTextWrap',
+            'next-column': 'NextColumnTextWrap',
+          }[args.mode],
+        );
+        if (args.offset !== undefined) {
+          const o = ctx.pt(args.offset);
+          const off = firstChild(propertiesOf(pref, true), 'TextWrapOffset');
+          if (off) setAttrs(off, { Top: o, Left: o, Bottom: o, Right: o });
+        }
+        ctx.save(doc);
+        return ok(`Text wrap set to ${args.mode}.`);
+      }),
+  );
+
+  server.registerTool(
+    'fit_frame_to_content',
+    {
+      title: 'Fit frame to content',
+      description:
+        'For text frames: turns on auto-size so the frame grows/shrinks with its text (height, or both). For image frames use set_image_fit.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        mode: z.enum(['height', 'both']).default('height'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const found = findItem(doc, args.item, args.page);
+        if (found.element.tagName !== 'TextFrame')
+          throw new Error('fit_frame_to_content works on text frames; use set_image_fit for pictures');
+        setTextFrameOptions(found.element, { autoSize: args.mode });
+        ctx.save(doc);
+        return ok(`Frame will auto-size (${args.mode}).`);
+      }),
+  );
+
+  void itemInfo;
+  void children;
+  void listPages;
+}

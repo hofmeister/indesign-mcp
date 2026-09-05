@@ -1,0 +1,632 @@
+// Paragraph/character/object styles (Styles.xml), swatches (Graphic.xml) and fonts (Fonts.xml).
+import type { IdmlDocument } from './document.ts';
+import { decodeStyleName, displayStyleName, encodeStyleName } from './ids.ts';
+import { escapeAttr } from './layers.ts';
+import {
+  attr,
+  children,
+  type Element,
+  firstChild,
+  fragment,
+  getProperty,
+  insertAfter,
+  numAttr,
+  setAttrs,
+  setProperty,
+} from './xml.ts';
+
+export type StyleKind = 'ParagraphStyle' | 'CharacterStyle' | 'ObjectStyle' | 'TableStyle' | 'CellStyle';
+
+const ROOT_GROUP: Record<StyleKind, string> = {
+  ParagraphStyle: 'RootParagraphStyleGroup',
+  CharacterStyle: 'RootCharacterStyleGroup',
+  ObjectStyle: 'RootObjectStyleGroup',
+  TableStyle: 'RootTableStyleGroup',
+  CellStyle: 'RootCellStyleGroup',
+};
+
+export interface StyleInfo {
+  self: string;
+  name: string;
+  group: string | undefined;
+  basedOn: string | undefined;
+  builtIn: boolean;
+  font: string | undefined;
+  fontStyle: string | undefined;
+  pointSize: number | undefined;
+  leading: string | undefined;
+  alignment: string | undefined;
+  fillColor: string | undefined;
+  attributes: Record<string, string>;
+}
+
+export function styleElements(
+  doc: IdmlDocument,
+  kind: StyleKind,
+): { element: Element; group: string | undefined }[] {
+  const root = firstChild(doc.resource('Styles'), ROOT_GROUP[kind]);
+  const out: { element: Element; group: string | undefined }[] = [];
+  const walk = (el: Element | undefined, group: string | undefined) => {
+    if (!el) return;
+    for (const c of children(el)) {
+      if (c.tagName === kind) out.push({ element: c, group });
+      else if (c.tagName === `${kind}Group`) walk(c, [group, attr(c, 'Name')].filter(Boolean).join('/'));
+    }
+  };
+  walk(root, undefined);
+  return out;
+}
+
+export function styleInfo(el: Element, group?: string): StyleInfo {
+  const attributes: Record<string, string> = {};
+  for (let i = 0; i < el.attributes.length; i++) {
+    const a = el.attributes.item(i)!;
+    if (
+      ![
+        'Self',
+        'Name',
+        'Imported',
+        'SplitDocument',
+        'EmitCss',
+        'StyleUniqueId',
+        'IncludeClass',
+        'ExtendedKeyboardShortcut',
+        'KeyboardShortcut',
+        'EmptyNestedStyles',
+        'EmptyLineStyles',
+        'EmptyGrepStyles',
+      ].includes(a.name)
+    )
+      attributes[a.name] = a.value;
+  }
+  const leading = getProperty(el, 'Leading');
+  const name = attr(el, 'Name') ?? '';
+  return {
+    self: attr(el, 'Self') ?? '',
+    name: displayStyleName(name),
+    group,
+    basedOn: getProperty(el, 'BasedOn')?.value,
+    builtIn: name.startsWith('$ID/'),
+    font: getProperty(el, 'AppliedFont')?.value,
+    fontStyle: attr(el, 'FontStyle'),
+    pointSize: el.hasAttribute('PointSize') ? numAttr(el, 'PointSize') : undefined,
+    leading: leading
+      ? leading.type === 'enumeration'
+        ? leading.value.toLowerCase()
+        : leading.value
+      : undefined,
+    alignment: attr(el, 'Justification'),
+    fillColor: attr(el, 'FillColor'),
+    attributes,
+  };
+}
+
+export function listStyles(doc: IdmlDocument, kind: StyleKind): StyleInfo[] {
+  return styleElements(doc, kind).map(({ element, group }) => styleInfo(element, group));
+}
+
+/** Resolves a style by Self, by display name, or by "Group/Name". Throws with the available names. */
+export function resolveStyle(doc: IdmlDocument, kind: StyleKind, ref: string): Element {
+  const all = styleElements(doc, kind);
+  const lower = ref.toLowerCase();
+  const found =
+    all.find((s) => attr(s.element, 'Self') === ref) ??
+    all.find((s) => attr(s.element, 'Self') === `${kind}/${encodeStyleName(ref)}`) ??
+    all.find((s) => displayStyleName(attr(s.element, 'Name') ?? '').toLowerCase() === lower) ??
+    all.find((s) => (attr(s.element, 'Name') ?? '').toLowerCase() === lower) ??
+    all.find(
+      (s) =>
+        [s.group, displayStyleName(attr(s.element, 'Name') ?? '')].filter(Boolean).join('/').toLowerCase() ===
+        lower,
+    );
+  if (!found) {
+    const names = all.map((s) => displayStyleName(attr(s.element, 'Name') ?? '')).join(', ');
+    throw new Error(
+      `${kind.replace('Style', ' style').toLowerCase()} "${ref}" not found. Available: ${names}`,
+    );
+  }
+  return found.element;
+}
+
+export function styleSelf(doc: IdmlDocument, kind: StyleKind, ref: string): string {
+  return attr(resolveStyle(doc, kind, ref), 'Self')!;
+}
+
+export const JUSTIFICATION: Record<string, string> = {
+  left: 'LeftAlign',
+  center: 'CenterAlign',
+  centre: 'CenterAlign',
+  right: 'RightAlign',
+  justify: 'LeftJustified',
+  'justify-left': 'LeftJustified',
+  'justify-right': 'RightJustified',
+  'justify-center': 'CenterJustified',
+  'justify-all': 'FullyJustified',
+  'full-justify': 'FullyJustified',
+  'to-binding': 'ToBindingSide',
+  'away-from-binding': 'AwayFromBindingSide',
+};
+
+export const CAPITALIZATION: Record<string, string> = {
+  normal: 'Normal',
+  'small-caps': 'SmallCaps',
+  'all-caps': 'AllCaps',
+  uppercase: 'AllCaps',
+  'cap-to-small-cap': 'CapToSmallCap',
+};
+
+export interface TextStyleSpec {
+  font?: string;
+  fontStyle?: string;
+  size?: number;
+  /** points, or "auto" */
+  leading?: number | 'auto';
+  color?: string;
+  tracking?: number;
+  capitalization?: keyof typeof CAPITALIZATION | string;
+  underline?: boolean;
+  strikeThrough?: boolean;
+  position?: 'normal' | 'superscript' | 'subscript';
+  horizontalScale?: number;
+  baselineShift?: number;
+  /** For character styles the "language" attribute is rarely needed; kept for completeness. */
+  extra?: Record<string, string>;
+}
+
+export interface ParagraphStyleSpec extends TextStyleSpec {
+  name: string;
+  basedOn?: string;
+  nextStyle?: string;
+  group?: string;
+  alignment?: keyof typeof JUSTIFICATION | string;
+  spaceBefore?: number;
+  spaceAfter?: number;
+  leftIndent?: number;
+  rightIndent?: number;
+  firstLineIndent?: number;
+  hyphenate?: boolean;
+  keepLinesTogether?: boolean;
+  dropCapLines?: number;
+  dropCapCharacters?: number;
+}
+
+export interface CharacterStyleSpec extends TextStyleSpec {
+  name: string;
+  basedOn?: string;
+  group?: string;
+}
+
+/** Translates a TextStyleSpec into IDML attributes + typed properties. */
+export function textStyleAttrs(
+  doc: IdmlDocument,
+  spec: TextStyleSpec,
+): {
+  attrs: Record<string, string | number | boolean | null>;
+  props: Record<string, { type: string; value: string | number } | null>;
+} {
+  const attrs: Record<string, string | number | boolean | null> = {};
+  const props: Record<string, { type: string; value: string | number } | null> = {};
+  if (spec.font !== undefined) props.AppliedFont = { type: 'string', value: spec.font };
+  if (spec.fontStyle !== undefined) attrs.FontStyle = spec.fontStyle;
+  if (spec.size !== undefined) attrs.PointSize = spec.size;
+  if (spec.leading !== undefined)
+    props.Leading =
+      spec.leading === 'auto'
+        ? { type: 'enumeration', value: 'Auto' }
+        : { type: 'unit', value: spec.leading };
+  if (spec.color !== undefined) attrs.FillColor = resolveSwatch(doc, spec.color);
+  if (spec.tracking !== undefined) attrs.Tracking = spec.tracking;
+  if (spec.capitalization !== undefined)
+    attrs.Capitalization = CAPITALIZATION[spec.capitalization.toLowerCase()] ?? spec.capitalization;
+  if (spec.underline !== undefined) attrs.Underline = spec.underline;
+  if (spec.strikeThrough !== undefined) attrs.StrikeThru = spec.strikeThrough;
+  if (spec.position !== undefined)
+    attrs.Position = { normal: 'Normal', superscript: 'Superscript', subscript: 'Subscript' }[spec.position];
+  if (spec.horizontalScale !== undefined) attrs.HorizontalScale = spec.horizontalScale;
+  if (spec.baselineShift !== undefined) attrs.BaselineShift = spec.baselineShift;
+  for (const [k, v] of Object.entries(spec.extra ?? {})) attrs[k] = v;
+  return { attrs, props };
+}
+
+function paragraphAttrs(spec: ParagraphStyleSpec): Record<string, string | number | boolean | null> {
+  const a: Record<string, string | number | boolean | null> = {};
+  if (spec.alignment !== undefined)
+    a.Justification = JUSTIFICATION[spec.alignment.toLowerCase()] ?? spec.alignment;
+  if (spec.spaceBefore !== undefined) a.SpaceBefore = spec.spaceBefore;
+  if (spec.spaceAfter !== undefined) a.SpaceAfter = spec.spaceAfter;
+  if (spec.leftIndent !== undefined) a.LeftIndent = spec.leftIndent;
+  if (spec.rightIndent !== undefined) a.RightIndent = spec.rightIndent;
+  if (spec.firstLineIndent !== undefined) a.FirstLineIndent = spec.firstLineIndent;
+  if (spec.hyphenate !== undefined) a.Hyphenation = spec.hyphenate;
+  if (spec.keepLinesTogether !== undefined) a.KeepLinesTogether = spec.keepLinesTogether;
+  if (spec.dropCapLines !== undefined) a.DropCapLines = spec.dropCapLines;
+  if (spec.dropCapCharacters !== undefined) a.DropCapCharacters = spec.dropCapCharacters;
+  return a;
+}
+
+function groupContainer(doc: IdmlDocument, kind: StyleKind, group: string | undefined): Element {
+  const styles = doc.resource('Styles');
+  let root = firstChild(styles, ROOT_GROUP[kind]);
+  if (!root) {
+    root = fragment(styles.ownerDocument!, `<${ROOT_GROUP[kind]} Self="${doc.newId()}"/>`);
+    insertAfter(styles, root);
+  }
+  if (!group) return root;
+  let container = root;
+  for (const segment of group.split('/').filter(Boolean)) {
+    let g = children(container, `${kind}Group`).find(
+      (x) => (attr(x, 'Name') ?? '').toLowerCase() === segment.toLowerCase(),
+    );
+    if (!g) {
+      g = fragment(
+        styles.ownerDocument!,
+        `<${kind}Group Self="${doc.newId()}" Name="${escapeAttr(segment)}"/>`,
+      );
+      insertAfter(container, g);
+    }
+    container = g;
+  }
+  return container;
+}
+
+function newStyleSelf(kind: StyleKind, group: string | undefined, name: string): string {
+  const path = [...(group ? group.split('/').filter(Boolean) : []), name].map(encodeStyleName).join('%3a');
+  return `${kind}/${path}`;
+}
+
+export function createParagraphStyle(doc: IdmlDocument, spec: ParagraphStyleSpec): StyleInfo {
+  if (
+    styleElements(doc, 'ParagraphStyle').some(
+      (s) => displayStyleName(attr(s.element, 'Name') ?? '').toLowerCase() === spec.name.toLowerCase(),
+    )
+  ) {
+    throw new Error(`A paragraph style named "${spec.name}" already exists. Use update_style to change it.`);
+  }
+  const container = groupContainer(doc, 'ParagraphStyle', spec.group);
+  const self = newStyleSelf('ParagraphStyle', spec.group, spec.name);
+  const basedOn = spec.basedOn ? resolveStyle(doc, 'ParagraphStyle', spec.basedOn) : undefined;
+  const next = spec.nextStyle ? styleSelf(doc, 'ParagraphStyle', spec.nextStyle) : self;
+  const el = fragment(
+    container.ownerDocument!,
+    `<ParagraphStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" NextStyle="${escapeAttr(next)}" SplitDocument="false" EmitCss="true" IncludeClass="true" EmptyNestedStyles="true" EmptyLineStyles="true" EmptyGrepStyles="true" KeyboardShortcut="0 0"><Properties><BasedOn type="string">${escapeAttr(basedOn ? attr(basedOn, 'Name')! : '$ID/[No paragraph style]')}</BasedOn><PreviewColor type="enumeration">Nothing</PreviewColor></Properties></ParagraphStyle>`,
+  );
+  applyStyleSpec(doc, el, spec);
+  insertAfter(container, el, children(container, 'ParagraphStyle').at(-1));
+  return styleInfo(el, spec.group);
+}
+
+export function createCharacterStyle(doc: IdmlDocument, spec: CharacterStyleSpec): StyleInfo {
+  if (
+    styleElements(doc, 'CharacterStyle').some(
+      (s) => displayStyleName(attr(s.element, 'Name') ?? '').toLowerCase() === spec.name.toLowerCase(),
+    )
+  ) {
+    throw new Error(`A character style named "${spec.name}" already exists. Use update_style to change it.`);
+  }
+  const container = groupContainer(doc, 'CharacterStyle', spec.group);
+  const self = newStyleSelf('CharacterStyle', spec.group, spec.name);
+  const basedOn = spec.basedOn ? resolveStyle(doc, 'CharacterStyle', spec.basedOn) : undefined;
+  const el = fragment(
+    container.ownerDocument!,
+    `<CharacterStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" SplitDocument="false" EmitCss="true" IncludeClass="true" KeyboardShortcut="0 0"><Properties><BasedOn type="string">${escapeAttr(basedOn ? attr(basedOn, 'Name')! : '$ID/[No character style]')}</BasedOn><PreviewColor type="enumeration">Nothing</PreviewColor></Properties></CharacterStyle>`,
+  );
+  applyStyleSpec(doc, el, spec);
+  insertAfter(container, el, children(container, 'CharacterStyle').at(-1));
+  return styleInfo(el, spec.group);
+}
+
+/** Applies a spec to an existing style element (used by create and update). */
+export function applyStyleSpec(
+  doc: IdmlDocument,
+  el: Element,
+  spec: TextStyleSpec & Partial<ParagraphStyleSpec>,
+): void {
+  const { attrs, props } = textStyleAttrs(doc, spec);
+  setAttrs(el, {
+    ...attrs,
+    ...(el.tagName === 'ParagraphStyle' ? paragraphAttrs(spec as ParagraphStyleSpec) : {}),
+  });
+  for (const [k, v] of Object.entries(props)) setProperty(el, k, v?.type ?? 'string', v ? v.value : null);
+  if (spec.basedOn && el.tagName !== 'ObjectStyle') {
+    const based = resolveStyle(doc, el.tagName as StyleKind, spec.basedOn);
+    setProperty(el, 'BasedOn', 'string', attr(based, 'Name')!);
+  }
+  if (spec.nextStyle && el.tagName === 'ParagraphStyle')
+    el.setAttribute('NextStyle', styleSelf(doc, 'ParagraphStyle', spec.nextStyle));
+}
+
+export function deleteStyle(doc: IdmlDocument, kind: StyleKind, ref: string, replaceWith?: string): void {
+  const el = resolveStyle(doc, kind, ref);
+  const self = attr(el, 'Self')!;
+  if ((attr(el, 'Name') ?? '').startsWith('$ID/')) throw new Error('Built-in styles cannot be deleted');
+  const replacement = replaceWith
+    ? styleSelf(doc, kind, replaceWith)
+    : kind === 'ParagraphStyle'
+      ? 'ParagraphStyle/$ID/NormalParagraphStyle'
+      : kind === 'CharacterStyle'
+        ? 'CharacterStyle/$ID/[No character style]'
+        : `${kind}/$ID/[None]`;
+  const attrName =
+    kind === 'ParagraphStyle'
+      ? 'AppliedParagraphStyle'
+      : kind === 'CharacterStyle'
+        ? 'AppliedCharacterStyle'
+        : 'AppliedObjectStyle';
+  for (const part of [...doc.storyParts(), ...doc.spreadParts(), ...doc.masterSpreadParts()]) {
+    for (const e of Array.from(doc.xml(part).getElementsByTagName('*')) as Element[]) {
+      if (e.getAttribute(attrName) === self) e.setAttribute(attrName, replacement);
+    }
+  }
+  el.parentNode?.removeChild(el);
+}
+
+// ---- swatches -------------------------------------------------------------------------------
+
+export interface SwatchInfo {
+  self: string;
+  name: string;
+  kind: 'color' | 'gradient' | 'mixed-ink' | 'none' | 'tint';
+  model: string | undefined;
+  space: string | undefined;
+  values: number[];
+  /** Approximate sRGB hex for display, e.g. "#ff0000". */
+  hex: string | undefined;
+  builtIn: boolean;
+}
+
+export function swatchElements(doc: IdmlDocument): Element[] {
+  return children(doc.resource('Graphic')).filter((c) =>
+    ['Color', 'Gradient', 'MixedInk', 'Swatch', 'Tint'].includes(c.tagName),
+  );
+}
+
+export function swatchInfo(el: Element): SwatchInfo {
+  const values = (attr(el, 'ColorValue') ?? '').trim().split(/\s+/).filter(Boolean).map(Number);
+  const space = attr(el, 'Space');
+  const name = attr(el, 'Name') ?? '';
+  return {
+    self: attr(el, 'Self') ?? '',
+    name: displayStyleName(name),
+    kind:
+      el.tagName === 'Color'
+        ? 'color'
+        : el.tagName === 'Gradient'
+          ? 'gradient'
+          : el.tagName === 'MixedInk'
+            ? 'mixed-ink'
+            : el.tagName === 'Tint'
+              ? 'tint'
+              : 'none',
+    model: attr(el, 'Model'),
+    space,
+    values,
+    hex: el.tagName === 'Color' ? colorToHex(space, values) : undefined,
+    builtIn:
+      name.startsWith('$ID/') ||
+      ['None', 'Paper', 'Black', 'Registration'].includes(name) ||
+      attr(el, 'ColorRemovable') === 'false',
+  };
+}
+
+export function listSwatches(doc: IdmlDocument): SwatchInfo[] {
+  return swatchElements(doc).map(swatchInfo);
+}
+
+export function cmykToRgb(c: number, m: number, y: number, k: number): [number, number, number] {
+  const f = (v: number) => Math.round(255 * (1 - Math.min(1, v / 100)) * (1 - Math.min(1, k / 100)));
+  return [f(c), f(m), f(y)];
+}
+
+export function rgbToCmyk(r: number, g: number, b: number): [number, number, number, number] {
+  const rr = r / 255;
+  const gg = g / 255;
+  const bb = b / 255;
+  const k = 1 - Math.max(rr, gg, bb);
+  if (k >= 1) return [0, 0, 0, 100];
+  const c = (1 - rr - k) / (1 - k);
+  const m = (1 - gg - k) / (1 - k);
+  const y = (1 - bb - k) / (1 - k);
+  return [c, m, y, k].map((v) => Math.round(v * 100)) as [number, number, number, number];
+}
+
+export function colorToHex(space: string | undefined, values: number[]): string | undefined {
+  let rgb: [number, number, number] | undefined;
+  if (space === 'CMYK' && values.length === 4)
+    rgb = cmykToRgb(values[0]!, values[1]!, values[2]!, values[3]!);
+  else if (space === 'RGB' && values.length === 3)
+    rgb = [values[0]!, values[1]!, values[2]!].map(Math.round) as [number, number, number];
+  else if (space === 'LAB' && values.length === 3) rgb = labToRgb(values[0]!, values[1]!, values[2]!);
+  if (!rgb) return undefined;
+  return `#${rgb.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function labToRgb(L: number, a: number, b: number): [number, number, number] {
+  let y = (L + 16) / 116;
+  let x = a / 500 + y;
+  let z = y - b / 200;
+  const f = (t: number) => (t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787);
+  x = 0.95047 * f(x);
+  y = 1.0 * f(y);
+  z = 1.08883 * f(z);
+  let r = x * 3.2406 + y * -1.5372 + z * -0.4986;
+  let g = x * -0.9689 + y * 1.8758 + z * 0.0415;
+  let bb = x * 0.0557 + y * -0.204 + z * 1.057;
+  const gamma = (v: number) => (v > 0.0031308 ? 1.055 * v ** (1 / 2.4) - 0.055 : 12.92 * v);
+  r = gamma(r);
+  g = gamma(g);
+  bb = gamma(bb);
+  return [r, g, bb].map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255)) as [number, number, number];
+}
+
+export interface SwatchSpec {
+  name?: string;
+  cmyk?: [number, number, number, number];
+  rgb?: [number, number, number];
+  hex?: string;
+  spot?: boolean;
+}
+
+export function parseColorString(s: string): SwatchSpec | undefined {
+  const t = s.trim();
+  let m = /^#?([0-9a-f]{6})$/i.exec(t);
+  if (m) return { hex: `#${m[1]!.toLowerCase()}` };
+  m = /^#?([0-9a-f]{3})$/i.exec(t);
+  if (m)
+    return {
+      hex: `#${m[1]!
+        .split('')
+        .map((c) => c + c)
+        .join('')
+        .toLowerCase()}`,
+    };
+  m = /^cmyk\s*\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*\)$/i.exec(t);
+  if (m) return { cmyk: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] };
+  m = /^rgb\s*\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*\)$/i.exec(t);
+  if (m) return { rgb: [Number(m[1]), Number(m[2]), Number(m[3])] };
+  m = /^C=(\d+)\s*M=(\d+)\s*Y=(\d+)\s*K=(\d+)$/i.exec(t);
+  if (m) return { cmyk: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] };
+  return undefined;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [
+    Number.parseInt(h.slice(0, 2), 16),
+    Number.parseInt(h.slice(2, 4), 16),
+    Number.parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+export function createSwatch(doc: IdmlDocument, spec: SwatchSpec): SwatchInfo {
+  let space: 'CMYK' | 'RGB';
+  let values: number[];
+  if (spec.cmyk) {
+    space = 'CMYK';
+    values = spec.cmyk.map((v) => Math.max(0, Math.min(100, v)));
+  } else if (spec.rgb) {
+    space = 'RGB';
+    values = spec.rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))));
+  } else if (spec.hex) {
+    space = 'RGB';
+    values = hexToRgb(spec.hex);
+  } else throw new Error('A swatch needs cmyk, rgb or hex values');
+  const autoName =
+    space === 'CMYK'
+      ? `C=${values[0]} M=${values[1]} Y=${values[2]} K=${values[3]}`
+      : `R=${values[0]} G=${values[1]} B=${values[2]}`;
+  const name = spec.name?.trim() || autoName;
+  const existing = swatchElements(doc).find(
+    (s) => displayStyleName(attr(s, 'Name') ?? '').toLowerCase() === name.toLowerCase(),
+  );
+  if (existing) {
+    if (spec.name) throw new Error(`A swatch named "${name}" already exists`);
+    return swatchInfo(existing);
+  }
+  const graphic = doc.resource('Graphic');
+  const self = `Color/${encodeStyleName(name)}`;
+  const groupRef = addToRootColorGroup(doc, self);
+  const el = fragment(
+    graphic.ownerDocument!,
+    `<Color Self="${escapeAttr(self)}" Model="${spec.spot ? 'Spot' : 'Process'}" Space="${space}" ColorValue="${values.join(' ')}" ColorOverride="Normal" AlternateSpace="NoAlternateColor" AlternateColorValue="" Name="${escapeAttr(name)}" ColorEditable="true" ColorRemovable="true" Visible="true" SwatchCreatorID="7937"${groupRef ? ` SwatchColorGroupReference="${groupRef}"` : ''}/>`,
+  );
+  insertAfter(graphic, el, children(graphic, 'Color').at(-1));
+  return swatchInfo(el);
+}
+
+function addToRootColorGroup(doc: IdmlDocument, swatchSelf: string): string | undefined {
+  const group =
+    children(doc.root, 'ColorGroup').find((g) => attr(g, 'IsRootColorGroup') === 'true') ??
+    children(doc.root, 'ColorGroup')[0];
+  if (!group) return undefined;
+  const existing = children(group, 'ColorGroupSwatch');
+  const first = existing[0];
+  const prefix =
+    (first ? attr(first, 'Self') : undefined)?.replace(/ColorGroupSwatch.*$/, '') ??
+    `${attr(group, 'Self')?.replace(/[^A-Za-z0-9]/g, '') ?? 'u'}`;
+  let n = existing.length;
+  let self = `${prefix}ColorGroupSwatch${n.toString(16)}`;
+  while (doc.ids.has(self)) self = `${prefix}ColorGroupSwatch${(++n).toString(16)}`;
+  doc.ids.add(self);
+  const el = fragment(
+    doc.designmap,
+    `<ColorGroupSwatch Self="${self}" SwatchItemRef="${escapeAttr(swatchSelf)}"/>`,
+  );
+  insertAfter(group, el, existing.at(-1));
+  return self;
+}
+
+/**
+ * Resolves a swatch reference for FillColor/StrokeColor: "none", "paper", a swatch name, a Self,
+ * or an inline color ("#ff0000", "cmyk(0,100,100,0)", "rgb(255,0,0)") which creates a swatch on demand.
+ */
+export function resolveSwatch(doc: IdmlDocument, ref: string): string {
+  const t = ref.trim();
+  const lower = t.toLowerCase();
+  if (lower === 'none' || lower === 'swatch/none' || lower === 'transparent' || lower === '')
+    return 'Swatch/None';
+  const swatches = swatchElements(doc);
+  const bySelf = swatches.find((s) => attr(s, 'Self') === t);
+  if (bySelf) return t;
+  const byName = swatches.find(
+    (s) =>
+      displayStyleName(attr(s, 'Name') ?? '').toLowerCase() === lower ||
+      (attr(s, 'Name') ?? '').toLowerCase() === lower,
+  );
+  if (byName) return attr(byName, 'Self')!;
+  const spec = parseColorString(t);
+  if (spec) return createSwatch(doc, spec).self;
+  const known: Record<string, [number, number, number, number]> = {
+    white: [0, 0, 0, 0],
+    red: [0, 100, 100, 0],
+    green: [100, 0, 100, 0],
+    blue: [100, 100, 0, 0],
+    cyan: [100, 0, 0, 0],
+    magenta: [0, 100, 0, 0],
+    yellow: [0, 0, 100, 0],
+    orange: [0, 50, 100, 0],
+    gray: [0, 0, 0, 50],
+    grey: [0, 0, 0, 50],
+  };
+  if (lower === 'paper' || lower === 'white')
+    return swatches.find((s) => attr(s, 'Self') === 'Color/Paper')
+      ? 'Color/Paper'
+      : createSwatch(doc, { name: 'White', cmyk: known.white }).self;
+  if (known[lower])
+    return createSwatch(doc, { name: lower[0]!.toUpperCase() + lower.slice(1), cmyk: known[lower] }).self;
+  const names = swatches.map((s) => displayStyleName(attr(s, 'Name') ?? '')).join(', ');
+  throw new Error(
+    `Unknown swatch or color "${ref}". Use a swatch name (${names}), "none", a hex color like #ff6600, or cmyk(0,60,100,0).`,
+  );
+}
+
+// ---- fonts ------------------------------------------------------------------------------------
+
+export interface FontInfo {
+  family: string;
+  styles: string[];
+  status: string | undefined;
+}
+
+export function listFonts(doc: IdmlDocument): FontInfo[] {
+  const fonts = doc.resource('Fonts');
+  return children(fonts, 'FontFamily').map((fam) => ({
+    family: attr(fam, 'Name') ?? '',
+    styles: children(fam, 'Font').map((f) => attr(f, 'FontStyleName') ?? ''),
+    status: children(fam, 'Font')[0] ? attr(children(fam, 'Font')[0]!, 'Status') : undefined,
+  }));
+}
+
+/** Fonts referenced by styles and text but not listed in Fonts.xml (informational). */
+export function fontsUsed(doc: IdmlDocument): Set<string> {
+  const used = new Set<string>();
+  const parts = [doc.partRefs('Styles')[0]?.src ?? 'Resources/Styles.xml', ...doc.storyParts()];
+  for (const part of parts) {
+    for (const el of Array.from(doc.xml(part).getElementsByTagName('AppliedFont'))) {
+      const v = el.textContent?.trim();
+      if (v) used.add(v);
+    }
+  }
+  return used;
+}
+
+export { decodeStyleName, displayStyleName };

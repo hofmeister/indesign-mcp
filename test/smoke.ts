@@ -84,6 +84,44 @@ const info = (await request('tools/call', { name: 'server_info', arguments: {} }
 assert(!info.result?.isError && info.result?.structuredContent?.version, 'server_info returns a version');
 console.log(`server_info: ${JSON.stringify(info.result?.structuredContent)}`);
 
+// Create a document through the binary: proves the embedded template and XML pipeline work when compiled.
+const { mkdtempSync, existsSync } = await import('node:fs');
+const { tmpdir } = await import('node:os');
+const { join } = await import('node:path');
+const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-smoke-'));
+const docPath = join(dir, 'smoke.idml');
+const created = (await request('tools/call', {
+  name: 'new_document',
+  arguments: { path: docPath, pageSize: 'A4', pages: 2, margins: '15mm' },
+})) as { result?: { isError?: boolean; content?: { text?: string }[] } };
+assert(!created.result?.isError, `new_document succeeded: ${created.result?.content?.[0]?.text}`);
+assert(existsSync(docPath), 'document file written');
+const frame = (await request('tools/call', {
+  name: 'add_text_frame',
+  arguments: {
+    document: docPath,
+    page: 1,
+    x: 20,
+    y: 20,
+    width: 100,
+    height: 40,
+    text: 'Smoke **test**',
+    name: 'Title',
+  },
+})) as { result?: { isError?: boolean; content?: { text?: string }[] } };
+assert(!frame.result?.isError, `add_text_frame succeeded: ${frame.result?.content?.[0]?.text}`);
+const validated = (await request('tools/call', {
+  name: 'validate_document',
+  arguments: { document: docPath },
+})) as {
+  result?: { isError?: boolean; structuredContent?: { errors?: number } };
+};
+assert(
+  !validated.result?.isError && validated.result?.structuredContent?.errors === 0,
+  'validate_document reports 0 errors',
+);
+console.log(`document created and validated at ${docPath}`);
+
 child.stdin.end();
 const code: number | null = await new Promise((resolve) => child.on('exit', resolve));
 assert(code === 0 || code === null, `clean exit after stdin closed (exit code ${code})`);

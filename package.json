@@ -26,6 +26,7 @@
     "fontkit": "^2.0.4",
     "hyphen": "^1.14.1",
     "image-size": "^2.0.2",
+    "jpeg-js": "^0.4.4",
     "libxml2-wasm": "^0.7.1",
     "openai": "^7.10.0",
     "zod": "^4.5.4"
