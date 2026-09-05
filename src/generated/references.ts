@@ -5,7 +5,7 @@ import ref1 from '../../references/magazine-interview.idml' with { type: 'file' 
 import ref2 from '../../references/magazine-template.idml' with { type: 'file' };
 
 export const BUNDLED_REFERENCES: { name: string; file: string; path: string }[] = [
-  { name: "four-pages-layers-guides", file: "four-pages-layers-guides.idml", path: ref0 },
-  { name: "magazine-interview", file: "magazine-interview.idml", path: ref1 },
-  { name: "magazine-template", file: "magazine-template.idml", path: ref2 },
+  { name: 'four-pages-layers-guides', file: 'four-pages-layers-guides.idml', path: ref0 },
+  { name: 'magazine-interview', file: 'magazine-interview.idml', path: ref1 },
+  { name: 'magazine-template', file: 'magazine-template.idml', path: ref2 },
 ];

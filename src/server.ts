@@ -11,6 +11,7 @@ import { registerDocumentTools } from './tools/document.ts';
 import { registerImageTools } from './tools/images.ts';
 import { registerItemTools } from './tools/items.ts';
 import { registerPageTools } from './tools/pages.ts';
+import { registerPreviewTools } from './tools/preview.ts';
 import { registerReferenceTools } from './tools/references.ts';
 import { registerStyleTools } from './tools/styles.ts';
 import { registerTextTools } from './tools/text.ts';
@@ -25,7 +26,8 @@ How to work:
 4. Every edit is saved to the .idml file immediately. Run validate_document when you are done, and tell the user where the file is.
 5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.
 6. References: list_reference_documents shows InDesign documents you can learn from; prefer new_document_from_reference or import_styles_from_reference over inventing styles from scratch.
-7. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.`;
+7. Previews: call preview_page after visible changes and look at the image before reporting back; it saves a PNG next to the document too.
+8. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.`;
 
 export interface ServerDeps {
   imageProvider?: ImageProvider;
@@ -77,6 +79,7 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
   registerImageTools(server, ctx, imageProvider);
   const catalog = new ReferenceCatalog(config.referenceDirs.filter((d) => existsSync(d)));
   registerReferenceTools(server, ctx, catalog);
+  registerPreviewTools(server, ctx);
   registerPrompts(server);
   return server;
 }
