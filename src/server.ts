@@ -1,13 +1,17 @@
+import { existsSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { type Config, loadConfig } from './config.ts';
 import { OpenAIImageProvider } from './images/openai.ts';
 import type { ImageProvider } from './images/provider.ts';
+import { registerPrompts } from './prompts.ts';
+import { ReferenceCatalog } from './references/catalog.ts';
 import { ToolContext } from './tools/context.ts';
 import { registerDocumentTools } from './tools/document.ts';
 import { registerImageTools } from './tools/images.ts';
 import { registerItemTools } from './tools/items.ts';
 import { registerPageTools } from './tools/pages.ts';
+import { registerReferenceTools } from './tools/references.ts';
 import { registerStyleTools } from './tools/styles.ts';
 import { registerTextTools } from './tools/text.ts';
 import { VERSION } from './version.ts';
@@ -20,7 +24,8 @@ How to work:
 3. Positions are measured from the top-left corner of the page in millimetres unless another unit is given ("10mm", "0.5in", "12pt"). Give items names ("Headline", "Hero image") so you can edit them later.
 4. Every edit is saved to the .idml file immediately. Run validate_document when you are done, and tell the user where the file is.
 5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.
-6. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.`;
+6. References: list_reference_documents shows InDesign documents you can learn from; prefer new_document_from_reference or import_styles_from_reference over inventing styles from scratch.
+7. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.`;
 
 export interface ServerDeps {
   imageProvider?: ImageProvider;
@@ -70,5 +75,8 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
   registerTextTools(server, ctx);
   registerStyleTools(server, ctx);
   registerImageTools(server, ctx, imageProvider);
+  const catalog = new ReferenceCatalog(config.referenceDirs.filter((d) => existsSync(d)));
+  registerReferenceTools(server, ctx, catalog);
+  registerPrompts(server);
   return server;
 }
