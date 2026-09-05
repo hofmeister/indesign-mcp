@@ -64,7 +64,11 @@ export function sizeRulesFor(model: string): SizeRules {
  * Picks a valid size for the model that best matches the wanted aspect ratio (width/height).
  * `target` may be an explicit "WxH", an aspect like "16:9", or a {width,height} in any unit.
  */
-export function pickSize(model: string, target: string | { width: number; height: number } | undefined, quality: ImageQuality = 'auto'): string {
+export function pickSize(
+  model: string,
+  target: string | { width: number; height: number } | undefined,
+  quality: ImageQuality = 'auto',
+): string {
   const rules = sizeRulesFor(model);
   let aspect: number | undefined;
   let explicit: { w: number; h: number } | undefined;
@@ -79,7 +83,10 @@ export function pickSize(model: string, target: string | { width: number; height
       else if (t === 'square') aspect = 1;
       else if (t === 'landscape') aspect = 3 / 2;
       else if (t === 'portrait') aspect = 2 / 3;
-      else throw new Error(`Cannot understand image size "${target}". Use "1024x1024", an aspect like "16:9", or "square"/"landscape"/"portrait".`);
+      else
+        throw new Error(
+          `Cannot understand image size "${target}". Use "1024x1024", an aspect like "16:9", or "square"/"landscape"/"portrait".`,
+        );
     }
   } else if (target) {
     aspect = target.width / target.height;

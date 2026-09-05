@@ -1,8 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { type Config, loadConfig } from './config.ts';
+import { OpenAIImageProvider } from './images/openai.ts';
+import type { ImageProvider } from './images/provider.ts';
 import { ToolContext } from './tools/context.ts';
 import { registerDocumentTools } from './tools/document.ts';
+import { registerImageTools } from './tools/images.ts';
 import { registerItemTools } from './tools/items.ts';
 import { registerPageTools } from './tools/pages.ts';
 import { registerStyleTools } from './tools/styles.ts';
@@ -16,14 +19,20 @@ How to work:
 2. Build the layout with InDesign vocabulary: pages and master pages, text frames, rectangles/ellipses/lines, images, paragraph and character styles, swatches, layers.
 3. Positions are measured from the top-left corner of the page in millimetres unless another unit is given ("10mm", "0.5in", "12pt"). Give items names ("Headline", "Hero image") so you can edit them later.
 4. Every edit is saved to the .idml file immediately. Run validate_document when you are done, and tell the user where the file is.
-5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.`;
+5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.
+6. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.`;
 
-export function createServer(config: Config = loadConfig()): McpServer {
+export interface ServerDeps {
+  imageProvider?: ImageProvider;
+}
+
+export function createServer(config: Config = loadConfig(), deps: ServerDeps = {}): McpServer {
   const server = new McpServer(
     { name: 'indesign-mcp', version: VERSION },
     { instructions: SERVER_INSTRUCTIONS },
   );
   const ctx = new ToolContext(config);
+  const imageProvider = deps.imageProvider ?? new OpenAIImageProvider(config.openaiApiKey, config.imageModel);
 
   server.registerTool(
     'server_info',
@@ -60,5 +69,6 @@ export function createServer(config: Config = loadConfig()): McpServer {
   registerItemTools(server, ctx);
   registerTextTools(server, ctx);
   registerStyleTools(server, ctx);
+  registerImageTools(server, ctx, imageProvider);
   return server;
 }

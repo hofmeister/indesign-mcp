@@ -14,7 +14,9 @@ export class OpenAIImageProvider implements ImageProvider {
   ) {
     this.available = Boolean(apiKey);
     this.defaultModel = defaultModel;
-    this.unavailableReason = apiKey ? undefined : 'Image generation needs an OpenAI API key. Set the OPENAI_API_KEY environment variable (or the "OpenAI API key" field in the Claude Desktop extension settings) and restart Claude.';
+    this.unavailableReason = apiKey
+      ? undefined
+      : 'Image generation needs an OpenAI API key. Set the OPENAI_API_KEY environment variable (or the "OpenAI API key" field in the Claude Desktop extension settings) and restart Claude.';
   }
 
   private getClient(): OpenAI {
@@ -34,7 +36,11 @@ export class OpenAIImageProvider implements ImageProvider {
     return { model, params };
   }
 
-  private toImage(data: { b64_json?: string; revised_prompt?: string } | undefined, model: string, format: string): GeneratedImage {
+  private toImage(
+    data: { b64_json?: string; revised_prompt?: string } | undefined,
+    model: string,
+    format: string,
+  ): GeneratedImage {
     if (!data?.b64_json) throw new Error('OpenAI returned no image data');
     const bytes = new Uint8Array(Buffer.from(data.b64_json, 'base64'));
     const dims = imageDimensions(bytes);
@@ -51,18 +57,33 @@ export class OpenAIImageProvider implements ImageProvider {
   async generate(req: GenerateRequest): Promise<GeneratedImage> {
     const client = this.getClient();
     const { model, params } = this.common(req);
-    const res = await wrap(() => client.images.generate(params as unknown as Parameters<typeof client.images.generate>[0]));
-    return this.toImage((res as { data?: { b64_json?: string; revised_prompt?: string }[] }).data?.[0], model, req.outputFormat ?? 'png');
+    const res = await wrap(() =>
+      client.images.generate(params as unknown as Parameters<typeof client.images.generate>[0]),
+    );
+    return this.toImage(
+      (res as { data?: { b64_json?: string; revised_prompt?: string }[] }).data?.[0],
+      model,
+      req.outputFormat ?? 'png',
+    );
   }
 
   async edit(req: EditRequest): Promise<GeneratedImage> {
     const client = this.getClient();
     const { model, params } = this.common(req);
-    const files = await Promise.all(req.images.map((img) => toFile(Buffer.from(img.bytes), img.name, { type: img.mimeType })));
+    const files = await Promise.all(
+      req.images.map((img) => toFile(Buffer.from(img.bytes), img.name, { type: img.mimeType })),
+    );
     params.image = files.length === 1 ? files[0] : files;
-    if (req.mask) params.mask = await toFile(Buffer.from(req.mask.bytes), req.mask.name, { type: req.mask.mimeType });
-    const res = await wrap(() => client.images.edit(params as unknown as Parameters<typeof client.images.edit>[0]));
-    return this.toImage((res as { data?: { b64_json?: string; revised_prompt?: string }[] }).data?.[0], model, req.outputFormat ?? 'png');
+    if (req.mask)
+      params.mask = await toFile(Buffer.from(req.mask.bytes), req.mask.name, { type: req.mask.mimeType });
+    const res = await wrap(() =>
+      client.images.edit(params as unknown as Parameters<typeof client.images.edit>[0]),
+    );
+    return this.toImage(
+      (res as { data?: { b64_json?: string; revised_prompt?: string }[] }).data?.[0],
+      model,
+      req.outputFormat ?? 'png',
+    );
   }
 }
 
@@ -72,7 +93,8 @@ async function wrap<T>(fn: () => Promise<T>): Promise<T> {
   } catch (err) {
     const e = err as { status?: number; message?: string; error?: { message?: string } };
     const detail = e.error?.message ?? e.message ?? String(err);
-    if (e.status === 401) throw new Error(`OpenAI rejected the API key (401). Check OPENAI_API_KEY. ${detail}`);
+    if (e.status === 401)
+      throw new Error(`OpenAI rejected the API key (401). Check OPENAI_API_KEY. ${detail}`);
     if (e.status === 429) throw new Error(`OpenAI rate limit or quota reached (429). ${detail}`);
     if (e.status === 400) throw new Error(`OpenAI could not process the request: ${detail}`);
     throw new Error(`OpenAI image request failed: ${detail}`);

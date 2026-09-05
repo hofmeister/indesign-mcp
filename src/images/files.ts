@@ -14,7 +14,9 @@ export interface ImageFileInfo {
   bytes: number;
 }
 
-export function imageDimensions(bytes: Uint8Array): { width: number; height: number; type?: string } | undefined {
+export function imageDimensions(
+  bytes: Uint8Array,
+): { width: number; height: number; type?: string } | undefined {
   try {
     const r = imageSize(bytes);
     if (!r.width || !r.height) return undefined;
@@ -64,9 +66,19 @@ export function probeImage(path: string): ImageFileInfo {
   if (!dims) {
     if (ext === 'pdf' || ext === 'ai' || ext === 'eps' || ext === 'psd') {
       // Vector / layered formats: use a nominal size; InDesign reads the real one when relinking.
-      return { path, width: 612, height: 792, ppi: 72, format: ext, mimeType: MIME[ext] ?? 'application/octet-stream', bytes: bytes.length };
+      return {
+        path,
+        width: 612,
+        height: 792,
+        ppi: 72,
+        format: ext,
+        mimeType: MIME[ext] ?? 'application/octet-stream',
+        bytes: bytes.length,
+      };
     }
-    throw new Error(`Cannot read image dimensions of ${basename(path)} (${ext || 'unknown format'}). Supported: PNG, JPEG, GIF, TIFF, WebP, BMP.`);
+    throw new Error(
+      `Cannot read image dimensions of ${basename(path)} (${ext || 'unknown format'}). Supported: PNG, JPEG, GIF, TIFF, WebP, BMP.`,
+    );
   }
   return {
     path,
@@ -88,7 +100,12 @@ export function readPpi(bytes: Uint8Array, type: string): number | undefined {
         const len = (bytes[off]! << 24) | (bytes[off + 1]! << 16) | (bytes[off + 2]! << 8) | bytes[off + 3]!;
         const kind = String.fromCharCode(bytes[off + 4]!, bytes[off + 5]!, bytes[off + 6]!, bytes[off + 7]!);
         if (kind === 'pHYs') {
-          const x = ((bytes[off + 8]! << 24) | (bytes[off + 9]! << 16) | (bytes[off + 10]! << 8) | bytes[off + 11]!) >>> 0;
+          const x =
+            ((bytes[off + 8]! << 24) |
+              (bytes[off + 9]! << 16) |
+              (bytes[off + 10]! << 8) |
+              bytes[off + 11]!) >>>
+            0;
           const unit = bytes[off + 16];
           if (unit === 1 && x > 0) return Math.round(x * 0.0254);
           return undefined;
