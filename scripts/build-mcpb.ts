@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: ${user_config.*} placeholders are substituted by Claude Desktop at install time
 // Builds Claude Desktop extension bundles (.mcpb), one per platform, from the compiled binaries.
 //   bun run scripts/build-mcpb.ts --dist dist --out dist/bundles
 // Requires network access for `npx @anthropic-ai/mcpb` (or a locally installed mcpb CLI).

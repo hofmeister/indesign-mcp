@@ -14,16 +14,16 @@ import f10 from '../../fonts/tinos-latin-700-italic.woff' with { type: 'file' };
 import f11 from '../../fonts/tinos-latin-700-normal.woff' with { type: 'file' };
 
 export const BUNDLED_FONTS: { file: string; path: string }[] = [
-  { file: 'arimo-latin-400-italic.woff', path: f0 },
-  { file: 'arimo-latin-400-normal.woff', path: f1 },
-  { file: 'arimo-latin-700-italic.woff', path: f2 },
-  { file: 'arimo-latin-700-normal.woff', path: f3 },
-  { file: 'cousine-latin-400-italic.woff', path: f4 },
-  { file: 'cousine-latin-400-normal.woff', path: f5 },
-  { file: 'cousine-latin-700-italic.woff', path: f6 },
-  { file: 'cousine-latin-700-normal.woff', path: f7 },
-  { file: 'tinos-latin-400-italic.woff', path: f8 },
-  { file: 'tinos-latin-400-normal.woff', path: f9 },
-  { file: 'tinos-latin-700-italic.woff', path: f10 },
-  { file: 'tinos-latin-700-normal.woff', path: f11 },
+  { file: "arimo-latin-400-italic.woff", path: f0 },
+  { file: "arimo-latin-400-normal.woff", path: f1 },
+  { file: "arimo-latin-700-italic.woff", path: f2 },
+  { file: "arimo-latin-700-normal.woff", path: f3 },
+  { file: "cousine-latin-400-italic.woff", path: f4 },
+  { file: "cousine-latin-400-normal.woff", path: f5 },
+  { file: "cousine-latin-700-italic.woff", path: f6 },
+  { file: "cousine-latin-700-normal.woff", path: f7 },
+  { file: "tinos-latin-400-italic.woff", path: f8 },
+  { file: "tinos-latin-400-normal.woff", path: f9 },
+  { file: "tinos-latin-700-italic.woff", path: f10 },
+  { file: "tinos-latin-700-normal.woff", path: f11 },
 ];
