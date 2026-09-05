@@ -173,3 +173,21 @@ describe('tools end to end', () => {
     expect(r3.text).toContain('Unknown swatch');
   });
 });
+
+describe('guides', () => {
+  test('add_guides creates schema-valid Guide elements', async () => {
+    const created = await call('new_document', { path: 'guides', pageSize: 'A4', columns: 3 });
+    const doc = created.data!.path as string;
+    const r = await call('add_guides', {
+      document: doc,
+      page: 1,
+      horizontal: [50, 100],
+      fromMargins: true,
+      fromColumns: true,
+    });
+    expect(r.isError).toBe(false);
+    expect(r.data!.count as number).toBeGreaterThanOrEqual(6);
+    const v = await call('validate_document', { document: doc });
+    expect(v.data!.errors).toBe(0);
+  });
+});

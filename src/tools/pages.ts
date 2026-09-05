@@ -310,6 +310,69 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
   );
 
   server.registerTool(
+    'add_guides',
+    {
+      title: 'Add ruler guides',
+      description:
+        'Adds ruler guides to a page: explicit horizontal/vertical positions (from the page top-left), or guides along the margins and column edges.',
+      inputSchema: z.object({
+        document: documentParam,
+        page: pageParam.default(1),
+        horizontal: z.array(lengthParam).optional().describe('Distances from the top of the page.'),
+        vertical: z.array(lengthParam).optional().describe('Distances from the left edge of the page.'),
+        fromMargins: z.boolean().optional().describe('Add guides on the four margins.'),
+        fromColumns: z.boolean().optional().describe('Add guides on every column edge.'),
+        color: z.string().optional().describe('Guide color name, e.g. Cyan, Magenta, Green.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const page = findPage(doc, args.page);
+        const spread = doc.findBySelf(page.spreadId)?.element;
+        if (!spread) throw new Error('Spread not found');
+        const { defaultLayerId } = require('../idml/layers.ts') as typeof import('../idml/layers.ts');
+        const { fragment, insertAfter } = require('../idml/xml.ts') as typeof import('../idml/xml.ts');
+        const layer = defaultLayerId(doc);
+        const guides: { orientation: 'Horizontal' | 'Vertical'; location: number }[] = [];
+        for (const h of args.horizontal ?? [])
+          guides.push({ orientation: 'Horizontal', location: page.origin.y + ctx.pt(h) });
+        for (const v of args.vertical ?? [])
+          guides.push({ orientation: 'Vertical', location: page.origin.x + ctx.pt(v) });
+        if (args.fromMargins) {
+          guides.push({ orientation: 'Horizontal', location: page.origin.y + page.margins.top });
+          guides.push({
+            orientation: 'Horizontal',
+            location: page.origin.y + page.height - page.margins.bottom,
+          });
+          guides.push({ orientation: 'Vertical', location: page.origin.x + page.margins.left });
+          guides.push({ orientation: 'Vertical', location: page.origin.x + page.width - page.margins.right });
+        }
+        if (args.fromColumns && page.columns.count > 1) {
+          const inner = page.width - page.margins.left - page.margins.right;
+          const colW = (inner - page.columns.gutter * (page.columns.count - 1)) / page.columns.count;
+          for (let i = 1; i < page.columns.count; i++) {
+            const x = page.origin.x + page.margins.left + i * (colW + page.columns.gutter);
+            guides.push({ orientation: 'Vertical', location: x - page.columns.gutter });
+            guides.push({ orientation: 'Vertical', location: x });
+          }
+        }
+        if (!guides.length) throw new Error('Give horizontal/vertical positions or fromMargins/fromColumns');
+        let last = children(spread, 'Guide').at(-1) ?? children(spread, 'Page').at(-1);
+        for (const g of guides) {
+          const el = fragment(
+            spread.ownerDocument!,
+            `<Guide Self="${doc.newId()}" Orientation="${g.orientation}" Location="${formatNumber(g.location)}" FitToPage="true" ViewThreshold="5" Locked="false" ItemLayer="${layer}" PageIndex="${page.positionInSpread}" GuideType="Ruler" GuideZone="0" GuideColor="${args.color ?? 'Cyan'}"/>`,
+          );
+          insertAfter(spread, el, last);
+          last = el;
+        }
+        ctx.save(doc);
+        return ok(`Added ${guides.length} guide(s) to page ${page.index}.`, { count: guides.length });
+      }),
+  );
+
+  server.registerTool(
     'list_layers',
     {
       title: 'List layers',

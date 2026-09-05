@@ -18,7 +18,9 @@
     "build:all": "bun run gen && bun run scripts/build.ts --all",
     "smoke": "bun run test/smoke.ts",
     "gen": "bun run scripts/gen-assets.ts",
-    "gen:check": "bun run scripts/gen-assets.ts --check"
+    "gen:check": "bun run scripts/gen-assets.ts --check",
+    "docs": "bun run scripts/gen-docs.ts",
+    "bundles": "bun run scripts/build-mcpb.ts --dist dist --out dist/bundles"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
