@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { summarizeDocument, summaryToMarkdown } from '../idml/inspect.ts';
+import { validateAgainstSchema } from '../idml/schema.ts';
 import { createDocument } from '../idml/template.ts';
 import { PAGE_SIZES } from '../idml/units.ts';
 import { summarizeIssues, validateDocument } from '../idml/validate.ts';
@@ -123,20 +124,50 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
     {
       title: 'Validate document',
       description:
-        'Checks the document for problems that would stop InDesign from opening it or make it behave oddly: missing parts, duplicate ids, references to deleted styles/swatches/stories, page-count mismatches, broken text threads.',
-      inputSchema: z.object({ document: documentParam }),
+        "Checks the document for problems that would stop InDesign from opening it or make it behave oddly: missing parts, duplicate ids, references to deleted styles/swatches/stories, page-count mismatches, broken text threads, and (schema: true, default) every part against Adobe's IDML schema.",
+      inputSchema: z.object({
+        document: documentParam,
+        schema: z
+          .boolean()
+          .optional()
+          .describe('Also validate against the IDML RELAX NG schema (default true).'),
+      }),
       annotations: { readOnlyHint: true },
     },
-    async ({ document }) =>
+    async ({ document, schema }) =>
       run(() => {
         const doc = ctx.open(document);
         const issues = validateDocument(doc);
         const lines = issues.map((i) => `- ${i.level.toUpperCase()} [${i.part}] ${i.message}`);
-        return ok(`${summarizeIssues(issues)}${lines.length ? `\n${lines.join('\n')}` : ''}`, {
-          errors: issues.filter((i) => i.level === 'error').length,
-          warnings: issues.filter((i) => i.level === 'warning').length,
-          issues,
-        });
+        let schemaSummary = '';
+        let schemaResult: Record<string, unknown> | undefined;
+        if (schema !== false) {
+          const r = validateAgainstSchema(doc, { schemaDir: ctx.config.schemaDir });
+          const errors = r.issues.filter((i) => i.level === 'error');
+          const infos = r.issues.filter((i) => i.level === 'info');
+          schemaSummary = `\nSchema check (IDML ${r.schemaVersion}, ${r.partsChecked} parts): ${errors.length} error(s)${infos.length ? `, ${infos.length} newer-version item(s)` : ''}.`;
+          if (r.versionNote) schemaSummary += `\n${r.versionNote}`;
+          for (const i of errors.slice(0, 40)) lines.push(`- SCHEMA [${i.part}] ${i.path}: ${i.message}`);
+          if (errors.length > 40) lines.push(`- … ${errors.length - 40} more schema errors`);
+          for (const i of infos.slice(0, 10)) lines.push(`- INFO [${i.part}] ${i.path}: ${i.message}`);
+          schemaResult = {
+            schemaVersion: r.schemaVersion,
+            errors: errors.length,
+            info: infos.length,
+            issues: r.issues.slice(0, 200),
+          };
+          for (const e of errors)
+            issues.push({ level: 'error', part: e.part, message: `${e.path}: ${e.message}` });
+        }
+        return ok(
+          `${summarizeIssues(issues)}${schemaSummary}${lines.length ? `\n${lines.join('\n')}` : ''}`,
+          {
+            errors: issues.filter((i) => i.level === 'error').length,
+            warnings: issues.filter((i) => i.level === 'warning').length,
+            issues,
+            schema: schemaResult,
+          },
+        );
       }),
   );
 

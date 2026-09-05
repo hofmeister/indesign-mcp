@@ -385,7 +385,7 @@ export function createTextFrame(doc: IdmlDocument, target: Target, options: NewT
   const storyId = attr(story, 'Self')!;
   const el = fragment(
     container.ownerDocument!,
-    `<TextFrame ${commonAttrs(doc, options, '[Normal Text Frame]')} ParentStory="${storyId}" PreviousTextFrame="n" NextTextFrame="n" ContentType="TextType" StrokeWeight="0" StrokeColor="Swatch/None" FillColor="Swatch/None"><Properties><PathGeometry/></Properties><TextFramePreference TextColumnCount="1" TextColumnGutter="12" TextColumnFixedWidth="${spreadRect.width}" UseFixedColumnWidth="false" FirstBaselineOffset="AscentOffset" MinimumFirstBaselineOffset="0" VerticalJustification="TopAlign" VerticalThreshold="0" IgnoreWrap="false" VerticalBalanceColumns="false" AutoSizingType="Off" AutoSizingReferencePoint="TopLeftAnchor" UseMinimumHeightForAutoSizing="false" MinimumHeightForAutoSizing="0" UseMinimumWidthForAutoSizing="false" MinimumWidthForAutoSizing="0" UseNoLineBreaksForAutoSizing="false"><Properties><InsetSpacing type="list"><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem></InsetSpacing></Properties></TextFramePreference>${TEXT_WRAP}</TextFrame>`,
+    `<TextFrame ${commonAttrs(doc, options, '[Normal Text Frame]')} ParentStory="${storyId}" PreviousTextFrame="n" NextTextFrame="n" ContentType="TextType" StrokeWeight="0" StrokeColor="Swatch/None" FillColor="Swatch/None"><Properties><PathGeometry/></Properties><TextFramePreference TextColumnCount="1" TextColumnGutter="12" TextColumnFixedWidth="${spreadRect.width}" UseFixedColumnWidth="false" FirstBaselineOffset="AscentOffset" MinimumFirstBaselineOffset="0" VerticalJustification="TopAlign" VerticalThreshold="0" IgnoreWrap="false" VerticalBalanceColumns="false" AutoSizingType="Off" AutoSizingReferencePoint="TopLeftPoint" UseMinimumHeightForAutoSizing="false" MinimumHeightForAutoSizing="0" UseMinimumWidthForAutoSizing="false" MinimumWidthForAutoSizing="0" UseNoLineBreaksForAutoSizing="false"><Properties><InsetSpacing type="list"><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem><ListItem type="unit">0</ListItem></InsetSpacing></Properties></TextFramePreference>${TEXT_WRAP}</TextFrame>`,
   );
   writePaths(el, [rectPath(spreadRect)]);
   setTextFrameOptions(el, options);
@@ -416,7 +416,7 @@ export function setTextFrameOptions(
       'AutoSizingType',
       { off: 'Off', height: 'HeightOnly', width: 'WidthOnly', both: 'HeightAndWidth' }[o.autoSize],
     );
-    if (o.autoSize !== 'off') pref.setAttribute('AutoSizingReferencePoint', 'TopLeftAnchor');
+    if (o.autoSize !== 'off') pref.setAttribute('AutoSizingReferencePoint', 'TopLeftPoint');
   }
   if (o.inset !== undefined) {
     const [t, l, b, r] = typeof o.inset === 'number' ? [o.inset, o.inset, o.inset, o.inset] : o.inset;

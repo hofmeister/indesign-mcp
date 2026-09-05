@@ -195,3 +195,12 @@ export function insertAfter(parent: Element, el: Element, ref?: Element): void {
     parent.insertBefore(el, closingWs);
   }
 }
+
+export const IDPKG_NAMESPACE = 'http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging';
+
+/** Creates an `<idPkg:Kind src="..."/>` reference element in the IDML packaging namespace. */
+export function createIdPkgRef(doc: Document, kind: string, src: string): Element {
+  const el = doc.createElementNS(IDPKG_NAMESPACE, `idPkg:${kind}`);
+  el.setAttribute('src', src);
+  return el;
+}

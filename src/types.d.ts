@@ -19,3 +19,7 @@ declare module '*.json?file' {
   const path: string;
   export default path;
 }
+declare module '*.rng' {
+  const path: string;
+  export default path;
+}

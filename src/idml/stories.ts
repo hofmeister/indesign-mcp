@@ -4,6 +4,7 @@ import { escapeAttr } from './layers.ts';
 import {
   attr,
   children,
+  createIdPkgRef,
   type Element,
   fragment,
   insertAfter,
@@ -241,8 +242,7 @@ export function createStory(
   root.appendChild(partDoc.createTextNode('\n'));
   doc.addXmlPart(part, partDoc);
   // designmap: idPkg:Story reference after the last story (or after BackingStory)
-  const ref = doc.designmap.createElement('idPkg:Story');
-  ref.setAttribute('src', part);
+  const ref = createIdPkgRef(doc.designmap, 'Story', part);
   const all = children(doc.root);
   const anchor =
     all.filter((c) => c.tagName === 'idPkg:Story').at(-1) ??

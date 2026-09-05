@@ -13,6 +13,7 @@ import {
 import {
   attr,
   children,
+  createIdPkgRef,
   type Element,
   firstChild,
   formatNumber,
@@ -258,8 +259,7 @@ function newSpread(
   partDoc.documentElement!.appendChild(partDoc.createTextNode('\n'));
   doc.addXmlPart(part, partDoc);
   // designmap reference
-  const ref = doc.designmap.createElement('idPkg:Spread');
-  ref.setAttribute('src', part);
+  const ref = createIdPkgRef(doc.designmap, 'Spread', part);
   const refs = children(doc.root).filter((c) => c.tagName === 'idPkg:Spread');
   const anchor = afterPart ? refs.find((r) => attr(r, 'src') === afterPart) : refs.at(-1);
   insertAfter(

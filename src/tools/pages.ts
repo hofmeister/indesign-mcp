@@ -15,7 +15,7 @@ import {
 } from '../idml/pages.ts';
 import { applyMargins } from '../idml/template.ts';
 import { formatLength, PAGE_SIZES, resolvePageSize } from '../idml/units.ts';
-import { attr, children, formatNumber, setAttrs } from '../idml/xml.ts';
+import { attr, children, createIdPkgRef, formatNumber, setAttrs } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
 import { documentParam, lengthParam, ok, pageParam, run } from './shared.ts';
 
@@ -300,8 +300,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
         partDoc.documentElement!.appendChild(clone);
         partDoc.documentElement!.appendChild(partDoc.createTextNode('\n'));
         doc.addXmlPart(part, partDoc);
-        const ref = doc.designmap.createElement('idPkg:MasterSpread');
-        ref.setAttribute('src', part);
+        const ref = createIdPkgRef(doc.designmap, 'MasterSpread', part);
         const refs = children(doc.root).filter((c) => c.tagName === 'idPkg:MasterSpread');
         const { insertAfter } = require('../idml/xml.ts') as typeof import('../idml/xml.ts');
         insertAfter(doc.root, ref, refs.at(-1));

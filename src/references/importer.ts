@@ -4,8 +4,17 @@ import type { IdmlDocument } from '../idml/document.ts';
 import { isPageItem, itemSpreadBounds, translateItem } from '../idml/items.ts';
 import { createLayer, findLayer, layerElements } from '../idml/layers.ts';
 import { addPages, findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
+import { pruneUnknownForSchema } from '../idml/schema.ts';
 import { type StyleKind, styleElements, swatchElements } from '../idml/styles.ts';
-import { allElements, attr, children, type Element, firstChild, insertAfter } from '../idml/xml.ts';
+import {
+  allElements,
+  attr,
+  children,
+  createIdPkgRef,
+  type Element,
+  firstChild,
+  insertAfter,
+} from '../idml/xml.ts';
 
 export type ConflictPolicy = 'skip' | 'overwrite' | 'rename';
 
@@ -28,6 +37,29 @@ export interface ImportReport {
   fonts: string[];
   skipped: string[];
   warnings: string[];
+}
+
+/**
+ * After copying content from a newer InDesign version, drop attributes/elements the target's own
+ * IDML version does not know so the file stays valid for that version.
+ */
+function pruneForTarget(to: IdmlDocument, parts: string[], report: ImportReport): void {
+  try {
+    const r = pruneUnknownForSchema(to, { parts });
+    if (r.attributesRemoved || r.elementsRemoved) {
+      report.warnings.push(
+        `Removed ${r.attributesRemoved} attribute(s) and ${r.elementsRemoved} element(s) that IDML ${to.domVersion} does not support (copied from a newer InDesign version).`,
+      );
+    }
+  } catch (e) {
+    report.warnings.push(`Schema clean-up skipped: ${(e as Error).message}`);
+  }
+}
+
+function resourceParts(to: IdmlDocument): string[] {
+  return ['Styles', 'Graphic', 'Fonts'].map(
+    (k) => to.partRefs(k as 'Styles' | 'Graphic' | 'Fonts')[0]?.src ?? `Resources/${k}.xml`,
+  );
 }
 
 const REF_ATTRS = [
@@ -171,7 +203,14 @@ function importStyleKind(
 ): void {
   const existing = new Map(styleElements(to, kind).map((s) => [attr(s.element, 'Self')!, s.element]));
   const sources = styleElements(from, kind).filter((s) => !nameOf(s.element).startsWith('$ID/'));
-  const only = opts.only?.map((n) => n.toLowerCase());
+  const only = opts.only;
+  const exactNames = new Set(sources.map((s) => nameOf(s.element)));
+  // Exact-case match wins; fall back to case-insensitive only when no style has that exact name.
+  const onlyMatches = (el: Element): boolean => {
+    if (!only) return true;
+    const name = nameOf(el);
+    return only.some((n) => (exactNames.has(n) ? n === name : n.toLowerCase() === name.toLowerCase()));
+  };
   const imported: Element[] = [];
   // Copy in dependency order: BasedOn parents first
   const bySelf = new Map(sources.map((s) => [attr(s.element, 'Self')!, s.element]));
@@ -186,20 +225,11 @@ function importStyleKind(
         sources.find((s) => nameOf(s.element) === basedOn)?.element ?? bySelf.get(`${kind}/${basedOn}`);
       if (parent) visit(parent);
     }
-    if (
-      only &&
-      !only.includes(nameOf(el).toLowerCase()) &&
-      !only.includes(
-        nameOf(el)
-          .replace(/^\$ID\//, '')
-          .toLowerCase(),
-      )
-    )
-      return;
+    if (!onlyMatches(el)) return;
     const path = groupPathOf(el, kind);
     const container = groupContainerIn(to, kind, path);
     const target = existing.get(self);
-    let clone = container.ownerDocument!.importNode(el, true) as Element;
+    const clone = container.ownerDocument!.importNode(el, true) as Element;
     if (target) {
       const policy = opts.conflict ?? 'skip';
       if (policy === 'skip') {
@@ -226,7 +256,6 @@ function importStyleKind(
     insertAfter(container, clone, children(container, kind).at(-1));
     imported.push(clone);
     list.push(nameOf(clone));
-    clone = clone;
   };
   for (const s of sources) visit(s.element);
   ensureSwatches(from, to, imported, report);
@@ -308,6 +337,7 @@ export function importStyles(
       report.fonts.push(nameOf(fam));
     }
   }
+  pruneForTarget(to, resourceParts(to), report);
   return report;
 }
 
@@ -519,8 +549,7 @@ export function copyMaster(
   partDoc.documentElement!.appendChild(clone);
   partDoc.documentElement!.appendChild(partDoc.createTextNode('\n'));
   to.addXmlPart(part, partDoc);
-  const ref = to.designmap.createElement('idPkg:MasterSpread');
-  ref.setAttribute('src', part);
+  const ref = createIdPkgRef(to.designmap, 'MasterSpread', part);
   const refs = children(to.root).filter((c) => c.tagName === 'idPkg:MasterSpread');
   insertAfter(
     to.root,
@@ -528,6 +557,7 @@ export function copyMaster(
     refs.at(-1) ??
       children(to.root).find((c) => c.tagName === 'idPkg:Preferences' || c.tagName === 'idPkg:Tags'),
   );
+  pruneForTarget(to, [part, ...resourceParts(to), ...to.storyParts()], report);
   return { id, name: `${finalPrefix}-${base}`, report };
 }
 
@@ -612,5 +642,10 @@ export function copyPage(
         );
     }
   }
+  pruneForTarget(
+    to,
+    [dest.spreadPart, ...to.masterSpreadParts(), ...resourceParts(to), ...to.storyParts()],
+    report,
+  );
   return { page: listPages(to).find((p) => p.id === dest.id)!, items: count, report };
 }
