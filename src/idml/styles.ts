@@ -467,7 +467,20 @@ export interface SwatchSpec {
 }
 
 export function parseColorString(s: string): SwatchSpec | undefined {
-  const t = s.trim();
+  let t = s.trim();
+  // "#14342b as Brand Green" names the swatch it creates. Without a name InDesign auto-names it
+  // after its values ("R=20 G=52 B=43"), which is unreadable in a real swatch panel.
+  let name: string | undefined;
+  const named = /^(.*?)\s+as\s+(.+)$/i.exec(t);
+  if (named) {
+    t = named[1]!.trim();
+    name = named[2]!.trim();
+  }
+  const spec = parseColorValue(t);
+  return spec && name ? { ...spec, name } : spec;
+}
+
+function parseColorValue(t: string): SwatchSpec | undefined {
   let m = /^#?([0-9a-f]{6})$/i.exec(t);
   if (m) return { hex: `#${m[1]!.toLowerCase()}` };
   m = /^#?([0-9a-f]{3})$/i.exec(t);
@@ -574,7 +587,18 @@ export function resolveSwatch(doc: IdmlDocument, ref: string): string {
   );
   if (byName) return attr(byName, 'Self')!;
   const spec = parseColorString(t);
-  if (spec) return createSwatch(doc, spec).self;
+  if (spec) {
+    // "#14342b as Brand Green" used on a second item must reuse the swatch it made the first time,
+    // not fail because the name is taken.
+    if (spec.name) {
+      const wanted = spec.name.toLowerCase();
+      const already = swatches.find(
+        (sw) => displayStyleName(attr(sw, 'Name') ?? '').toLowerCase() === wanted,
+      );
+      if (already) return attr(already, 'Self')!;
+    }
+    return createSwatch(doc, spec).self;
+  }
   const known: Record<string, [number, number, number, number]> = {
     white: [0, 0, 0, 0],
     red: [0, 100, 100, 0],
@@ -617,15 +641,63 @@ export function listFonts(doc: IdmlDocument): FontInfo[] {
 }
 
 /** Fonts referenced by styles and text but not listed in Fonts.xml (informational). */
+/**
+ * Fonts the document actually asks for: every font named in a story, plus the fonts of the styles
+ * those stories and items apply (and the styles those are based on).
+ *
+ * Styles nobody uses are left out on purpose. A blank template defines [Basic Paragraph] in Minion
+ * Pro, and counting it makes every new document report a missing font it never referenced.
+ */
 export function fontsUsed(doc: IdmlDocument): Set<string> {
   const used = new Set<string>();
-  const parts = [doc.partRefs('Styles')[0]?.src ?? 'Resources/Styles.xml', ...doc.storyParts()];
-  for (const part of parts) {
-    for (const el of Array.from(doc.xml(part).getElementsByTagName('AppliedFont'))) {
-      const v = el.textContent?.trim();
+  const addFontsIn = (el: Element): void => {
+    for (const f of Array.from(el.getElementsByTagName('AppliedFont'))) {
+      const v = f.textContent?.trim();
       if (v) used.add(v);
     }
+  };
+
+  // Fonts named directly in the text, and the styles the text and the page items apply.
+  const applied = new Set<string>();
+  const styleAttrs = ['AppliedParagraphStyle', 'AppliedCharacterStyle', 'AppliedObjectStyle'];
+  const collect = (el: Element): void => {
+    for (const name of styleAttrs) {
+      const v = attr(el, name);
+      if (v) applied.add(v);
+    }
+    for (const c of children(el)) collect(c);
+  };
+  for (const part of doc.storyParts()) {
+    const xml = doc.xml(part);
+    if (!xml.documentElement) continue;
+    addFontsIn(xml.documentElement);
+    collect(xml.documentElement);
   }
+  for (const spread of [...doc.spreads(), ...doc.masterSpreads()]) collect(spread);
+
+  // A style that is applied brings the styles it is based on with it.
+  const stylesPart = doc.partRefs('Styles')[0]?.src ?? 'Resources/Styles.xml';
+  const styleXml = doc.xml(stylesPart);
+  const byId = new Map<string, Element>();
+  const index = (el: Element): void => {
+    const self = attr(el, 'Self');
+    if (self && /Style$/.test(el.tagName)) byId.set(self, el);
+    for (const c of children(el)) index(c);
+  };
+  if (styleXml.documentElement) index(styleXml.documentElement);
+  const seen = new Set<string>();
+  const visit = (id: string): void => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const el = byId.get(id);
+    if (!el) return;
+    addFontsIn(el);
+    for (const name of ['BasedOn', 'NextStyle', 'AppliedCharacterStyle']) {
+      const ref = attr(el, name);
+      if (ref) visit(ref);
+    }
+  };
+  for (const id of applied) visit(id);
   return used;
 }
 

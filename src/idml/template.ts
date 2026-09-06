@@ -2,7 +2,14 @@
 import { readFileSync } from 'node:fs';
 import { IdmlDocument } from './document.ts';
 import { formatMatrix } from './geometry.ts';
-import { addPages, documentPreference, listPages, pageTransform, removePages } from './pages.ts';
+import {
+  addPages,
+  documentPreference,
+  IDENTITY_TRANSFORM,
+  listPages,
+  pageTransform,
+  removePages,
+} from './pages.ts';
 import blankTemplatePath from './template/blank.idml' with { type: 'file' };
 import { formatLength, type LengthInput, resolvePageSize, toPoints, type Unit } from './units.ts';
 import { attr, children, type Element, firstChild, formatNumber, removeElement, setAttrs } from './xml.ts';
@@ -90,6 +97,10 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
         setAttrs(page, {
           GeometricBounds: `0 0 ${formatNumber(h)} ${formatNumber(w)}`,
           ItemTransform: formatMatrix(pageTransform(w, h, facing, facing ? 'right' : 'single')),
+          // The page has just been moved and resized, so any transform the template carried for
+          // its master no longer means anything. InDesign honours this one even though the
+          // built-in renderer does not: leaving it stale draws every master item offset.
+          MasterPageTransform: IDENTITY_TRANSFORM,
         });
         // delete items on the page except the page itself (blank template should have none, but be safe)
       }
@@ -117,6 +128,7 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
         setAttrs(page, {
           GeometricBounds: `0 0 ${formatNumber(h)} ${formatNumber(w)}`,
           ItemTransform: formatMatrix(pageTransform(w, h, facing || mpages.length > 1, side)),
+          MasterPageTransform: IDENTITY_TRANSFORM,
         });
       });
     }

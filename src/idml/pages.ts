@@ -221,6 +221,12 @@ export function updatePageCounts(doc: IdmlDocument): void {
   }
 }
 
+/**
+ * The transform a page applies to the master it inherits. A page and its master are the same size
+ * here, so it is always identity — but InDesign obeys a stale one and draws master items offset.
+ */
+export const IDENTITY_TRANSFORM = '1 0 0 1 0 0';
+
 /** ItemTransform for a page at `position` (0 = left) in a spread with `count` pages. */
 export function pageTransform(
   width: number,
@@ -327,7 +333,7 @@ export function addPages(doc: IdmlDocument, options: AddPagesOptions = {}): Page
       OverrideList: '',
       GeometricBounds: `0 0 ${formatNumber(size.height)} ${formatNumber(size.width)}`,
       ItemTransform: formatMatrix(transform),
-      MasterPageTransform: '1 0 0 1 0 0',
+      MasterPageTransform: IDENTITY_TRANSFORM,
     });
     if (options.master !== undefined) page.setAttribute('AppliedMaster', masterId ?? 'n');
     // Insert after the last Page element (or after FlattenerPreference) so items stay after pages... pages come first in InDesign output

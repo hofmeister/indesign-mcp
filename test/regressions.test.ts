@@ -229,3 +229,119 @@ describe('contact sheet', () => {
     for (const id of a) expect(b.has(id)).toBe(false);
   });
 });
+
+describe('master page transforms', () => {
+  test('every page inherits its master unshifted', async () => {
+    const client = await connectedClient();
+    const document = docPath('master');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 4 });
+    await call(client, 'add_pages', { document, count: 2 });
+    await call(client, 'duplicate_page', { document, page: 1 });
+
+    const { readFileSync } = await import('node:fs');
+    const { strFromU8, unzipSync } = await import('fflate');
+    const zip = unzipSync(new Uint8Array(readFileSync(document)));
+    const transforms: string[] = [];
+    for (const [name, bytes] of Object.entries(zip)) {
+      if (!/Spread/.test(name)) continue;
+      for (const m of strFromU8(bytes).matchAll(/MasterPageTransform="([^"]*)"/g)) transforms.push(m[1]!);
+    }
+    expect(transforms.length).toBeGreaterThan(0);
+    // A stale transform here is honoured by InDesign but ignored by the built-in renderer, so the
+    // two disagree: master items come out offset only in the InDesign render.
+    for (const t of transforms) expect(t).toBe('1 0 0 1 0 0');
+  });
+
+  test('the bundled blank template carries no page offset', async () => {
+    const { loadBlankTemplateBytes } = await import('../src/idml/template.ts');
+    const { strFromU8, unzipSync } = await import('fflate');
+    const zip = unzipSync(loadBlankTemplateBytes());
+    for (const [name, bytes] of Object.entries(zip)) {
+      if (!/Spread/.test(name)) continue;
+      for (const m of strFromU8(bytes).matchAll(/MasterPageTransform="([^"]*)"/g))
+        expect(m[1]).toBe('1 0 0 1 0 0');
+    }
+  });
+});
+
+describe('named inline colours', () => {
+  test('"as <name>" names the swatch, and reuses it the second time', async () => {
+    const client = await connectedClient();
+    const document = docPath('colour');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    for (const y of [10, 80])
+      await call(client, 'add_rectangle', {
+        document,
+        page: 1,
+        x: 10,
+        y,
+        width: 50,
+        height: 50,
+        fill: '#14342b as Brand Green',
+      });
+
+    const swatches = await call(client, 'list_swatches', { document });
+    const text = swatches.content[0]?.text ?? '';
+    expect(text).toContain('Brand Green');
+    // The auto-generated name must not appear alongside it, and the second use must not have
+    // created a duplicate or failed with "a swatch named ... already exists".
+    expect(text).not.toContain('R=20 G=52 B=43');
+    expect(text.match(/Brand Green/g)?.length).toBe(1);
+  });
+});
+
+describe('fonts reported as used', () => {
+  test('a style nobody applies does not drag its font into the report', async () => {
+    const client = await connectedClient();
+    const document = docPath('fonts2');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', {
+      document,
+      name: 'Body',
+      font: 'Liberation Sans',
+      size: 10,
+    });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'H',
+      x: 20,
+      y: 20,
+      width: 100,
+      height: 20,
+      text: 'Hi',
+      paragraphStyle: 'Body',
+    });
+
+    const report = await call(client, 'preflight_document', { document });
+    // The template's unused [Basic Paragraph] is Minion Pro; nothing in this document asks for it.
+    expect(report.content[0]?.text ?? '').not.toContain('Minion Pro');
+  });
+});
+
+describe('tool descriptions', () => {
+  test('every tool a description points at exists', async () => {
+    const client = await connectedClient();
+    const { tools } = await client.listTools();
+    const names = new Set(tools.map((t) => t.name));
+    expect(names.size).toBeGreaterThan(50);
+
+    const missing: string[] = [];
+    for (const tool of tools) {
+      const text = [tool.description ?? '', JSON.stringify(tool.inputSchema ?? {})].join(' ');
+      // Tool names are snake_case; only check words that look like a reference to one.
+      for (const m of text.matchAll(/`?\b([a-z]+(?:_[a-z]+){1,3})\b`?/g)) {
+        const word = m[1]!;
+        if (names.has(word)) continue;
+        if (
+          !/^(add|create|set|get|list|new|open|apply|insert|delete|remove|move|export|preview|describe|validate|preflight|package|place|edit|update|find|format|import|copy|duplicate|resize|rotate|group|ungroup|thread|anchor|override|relink|embed|unembed|step|style|merge|reorder|rename|arrange|align|fit|data)_/.test(
+            word,
+          )
+        )
+          continue;
+        missing.push(`${tool.name}: ${word}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});

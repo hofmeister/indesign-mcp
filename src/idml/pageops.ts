@@ -8,6 +8,7 @@ import { isPageItem, itemSpreadBounds, translateItem } from './items.ts';
 import { duplicateStoriesOf } from './masters.ts';
 import {
   findPage,
+  IDENTITY_TRANSFORM,
   isFacingPages,
   listPages,
   newSpread,
@@ -133,6 +134,9 @@ function rebuild(doc: IdmlDocument, ordered: DetachedPage[]): PageInfo[] {
       const transform = pageTransform(d.width, d.height, facing, side);
       const imported = spreadDoc.importNode(d.page, true) as Element;
       imported.setAttribute('ItemTransform', formatMatrix(transform));
+      // The page has moved; a transform for its master from where it used to sit would offset
+      // every master item it inherits.
+      imported.setAttribute('MasterPageTransform', IDENTITY_TRANSFORM);
       insertAfter(spread, imported, lastPage);
       lastPage = imported;
       placed.push({ page: imported, detached: d, origin: { x: transform[4], y: transform[5] } });

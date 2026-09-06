@@ -25,7 +25,7 @@ export const itemParam = z.string().describe("The item's name or id (see describ
 export const colorParam = z
   .string()
   .describe(
-    'A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches.',
+    'A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values.',
   );
 
 export const paragraphInput = z.object({

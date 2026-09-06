@@ -238,7 +238,14 @@ function fileExportScript(
   idmlPath: string,
   outPath: string,
   format: 'pdf' | 'jpeg' | 'png',
-  options: { pages?: string; dpi?: number; quality?: number; spreads?: boolean; bleed?: boolean },
+  options: {
+    pages?: string;
+    dpi?: number;
+    quality?: number;
+    spreads?: boolean;
+    bleed?: boolean;
+    marks?: boolean;
+  },
 ): string {
   const js = (s: string) => JSON.stringify(s);
   const dpi = Math.max(36, Math.min(2400, Math.round(options.dpi ?? 300)));
@@ -250,7 +257,12 @@ function fileExportScript(
     var prefs = app.pdfExportPreferences;
     prefs.pageRange = ${options.pages ? js(options.pages) : 'PageRange.ALL_PAGES'};
     prefs.exportReaderSpreads = ${options.spreads ? 'true' : 'false'};
-    prefs.useDocumentBleedWithPDF = ${options.bleed ? 'true' : 'false'};
+    prefs.useDocumentBleedWithPDF = ${options.bleed || options.marks ? 'true' : 'false'};
+    prefs.cropMarks = ${options.marks ? 'true' : 'false'};
+    prefs.bleedMarks = ${options.marks ? 'true' : 'false'};
+    prefs.registrationMarks = ${options.marks ? 'true' : 'false'};
+    prefs.colorBars = ${options.marks ? 'true' : 'false'};
+    prefs.pageInformationMarks = ${options.marks ? 'true' : 'false'};
     if (preset.isValid) doc.exportFile(ExportFormat.PDF_TYPE, File(${js(outPath)}), false, preset);
     else doc.exportFile(ExportFormat.PDF_TYPE, File(${js(outPath)}), false);`
       : format === 'jpeg'
@@ -326,6 +338,7 @@ export async function exportWithInDesign(
     quality?: number;
     spreads?: boolean;
     bleed?: boolean;
+    marks?: boolean;
     timeoutMs?: number;
   } = {},
 ): Promise<{ app: string; files: string[] }> {

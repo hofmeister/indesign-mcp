@@ -342,6 +342,12 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
         dpi: z.number().int().min(36).max(1200).optional().describe('Resolution for PNG/JPEG (default 150).'),
         quality: z.number().int().min(1).max(100).optional().describe('JPEG quality (default 90).'),
         bleed: z.boolean().optional().describe('Include the bleed area.'),
+        marks: z
+          .boolean()
+          .optional()
+          .describe(
+            "Printer's marks on a PDF: crop and bleed marks, registration, colour bars and page info. Needs Adobe InDesign; the built-in renderer cannot draw them.",
+          ),
         renderer: z.enum(['auto', 'builtin', 'indesign']).optional(),
       }),
     },
@@ -360,6 +366,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
           dpi: args.dpi,
           quality: args.quality,
           bleed: args.bleed,
+          marks: args.marks,
           renderer: args.renderer,
         });
         const lines = [

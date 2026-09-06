@@ -26,6 +26,8 @@ export interface ExportOptions extends RenderOptions {
   quality?: number;
   renderer?: 'auto' | 'builtin' | 'indesign';
   title?: string;
+  /** Printer's marks on a PDF: crop and bleed marks, registration, colour bars, page info. */
+  marks?: boolean;
 }
 
 export interface ExportResult {
@@ -125,6 +127,7 @@ export async function exportDocument(doc: IdmlDocument, options: ExportOptions):
           quality: options.quality,
           spreads: options.spreads,
           bleed: options.bleed,
+          marks: options.marks,
         });
         return { files: r.files, renderer: 'indesign', warnings: [], substitutions: {} };
       } catch (e) {
@@ -135,6 +138,10 @@ export async function exportDocument(doc: IdmlDocument, options: ExportOptions):
 
   const { sheets, warnings, substitutions } = sheetSvgs(doc, pages, options);
   const files: string[] = [];
+  if (options.marks)
+    warnings.push(
+      "Printer's marks need Adobe InDesign; this export was made by the built-in renderer, so it has none.",
+    );
   if (options.format === 'pdf') {
     const { pdf, warnings: pdfWarnings } = svgPagesToPdf(
       sheets.map((s) => ({ svg: s.svg, width: s.width, height: s.height })),
