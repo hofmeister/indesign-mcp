@@ -233,6 +233,86 @@ export async function renderWithInDesign(
   }
 }
 
+/**
+ * Result of asking InDesign to run a trivial script. Detection alone only proves the application is
+ * installed: on macOS the first script also needs the user to grant automation access, and until
+ * that consent dialog is answered every `do script` blocks until it times out.
+ */
+const NO_ANSWER =
+  'InDesign did not answer a test script. macOS may still be waiting for you to allow automation access — look for a "wants access to control Adobe InDesign" dialog, or tick InDesign under System Settings > Privacy & Security > Automation. A modal dialog or a long-running script inside InDesign looks the same from here.';
+
+export type ScriptingProbe =
+  | { ok: true; app: string }
+  | {
+      ok: false;
+      app?: string;
+      reason: 'not-installed' | 'no-permission' | 'not-responding' | 'error';
+      message: string;
+    };
+
+/** Runs a one-line script to check that InDesign really accepts scripts right now. */
+export async function probeInDesignScripting(timeoutMs = 15_000): Promise<ScriptingProbe> {
+  const install = detectInDesign();
+  if (!install)
+    return {
+      ok: false,
+      reason: 'not-installed',
+      message: 'Adobe InDesign is not installed on this computer',
+    };
+  try {
+    if (install.platform === 'darwin') {
+      const apple = `with timeout of ${Math.max(2, Math.round(timeoutMs / 1000))} seconds\ntell application id "com.adobe.InDesign" to do script "1+1" language javascript\nend timeout`;
+      const r = await runCommand('osascript', ['-e', apple], timeoutMs + 5_000);
+      const out = `${r.stdout}${r.stderr}`.trim();
+      if (r.code === 0 && r.stdout.trim() === '2') return { ok: true, app: install.name };
+      if (/-1712|timed out/i.test(out))
+        return { ok: false, app: install.name, reason: 'not-responding', message: NO_ANSWER };
+      if (/-1743|not authori[sz]ed/i.test(out))
+        return {
+          ok: false,
+          app: install.name,
+          reason: 'no-permission',
+          message:
+            'Automation access to InDesign was refused. Allow it under System Settings > Privacy & Security > Automation.',
+        };
+      return {
+        ok: false,
+        app: install.name,
+        reason: 'error',
+        message: out || `osascript exited with ${r.code}`,
+      };
+    }
+    const outDir = mkdtempSync(join(tmpdir(), 'indesign-mcp-probe-'));
+    try {
+      const jsxPath = join(outDir, 'probe.jsx');
+      writeFileSync(jsxPath, '1+1;');
+      const vbsPath = join(outDir, 'probe.vbs');
+      writeFileSync(
+        vbsPath,
+        `Set app = CreateObject("InDesign.Application")\napp.DoScript ${JSON.stringify(jsxPath).replace(/\\\\/g, '\\')}, 1246973031\n`,
+      );
+      const r = await runCommand('cscript', ['//nologo', vbsPath], timeoutMs);
+      if (r.code === 0) return { ok: true, app: install.name };
+      return {
+        ok: false,
+        app: install.name,
+        reason: 'error',
+        message: `${r.stderr}${r.stdout}`.trim() || `cscript exited with ${r.code}`,
+      };
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  } catch (e) {
+    const message = (e as Error).message;
+    return {
+      ok: false,
+      app: install.name,
+      reason: 'not-responding',
+      message: /did not finish within/.test(message) ? NO_ANSWER : message,
+    };
+  }
+}
+
 /** ExtendScript that exports a document as PDF, JPEG or PNG. */
 function fileExportScript(
   idmlPath: string,

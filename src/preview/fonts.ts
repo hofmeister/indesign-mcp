@@ -59,6 +59,23 @@ export function systemFontDirs(): string[] {
   return dirs.filter((d) => existsSync(d));
 }
 
+/**
+ * fontkit hands back name-table entries as raw bytes for some legacy macOS fonts (the .ttc files
+ * holding Helvetica, Helvetica Neue and Futura), so every string field has to be decoded before use.
+ * Getting this wrong used to throw inside register(), silently dropping the whole font file.
+ */
+function nameString(value: unknown): string | undefined {
+  if (typeof value === 'string') return value || undefined;
+  if (value instanceof Uint8Array) {
+    const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    let text = buf.toString('utf8');
+    if (text.includes('\uFFFD')) text = buf.toString('latin1');
+    text = text.split('\u0000').join('').trim();
+    return text || undefined;
+  }
+  return undefined;
+}
+
 function weightFromStyle(style: string): number {
   const s = style.toLowerCase();
   if (/thin|hairline/.test(s)) return 100;
@@ -121,14 +138,12 @@ export class FontCatalog {
       } & FontFace;
       const fonts = parsed.fonts ? parsed.fonts : [parsed];
       fonts.forEach((f, index) => {
-        const family = (
-          typeof f.familyName === 'string' ? f.familyName : basename(path, extname(path))
-        ).trim();
-        const style = (typeof f.subfamilyName === 'string' ? f.subfamilyName : 'Regular').trim();
+        const family = (nameString(f.familyName) ?? basename(path, extname(path))).trim();
+        const style = nameString(f.subfamilyName) ?? 'Regular';
         this.faces.push({
           family,
           style,
-          postscriptName: typeof f.postscriptName === 'string' ? f.postscriptName : '',
+          postscriptName: nameString(f.postscriptName) ?? '',
           path,
           index,
           weight: weightFromStyle(style),

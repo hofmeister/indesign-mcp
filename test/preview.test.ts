@@ -58,10 +58,26 @@ describe('preview building blocks', () => {
     expect(m.substituted).toBe(true);
     expect(m.info.family).toBe('Tinos');
     expect(m.info.weight).toBe(700);
-    const s = cat.match('Helvetica Neue', 'Italic');
+    // A family no computer has, so the sans-serif fallback is exercised whatever is installed.
+    const s = cat.match('Nonexistent Grotesk', 'Italic');
+    expect(s.substituted).toBe(true);
     expect(s.info.family).toBe('Arimo');
     expect(s.info.italic).toBe(true);
     expect(cat.match('Arimo', 'Regular').substituted).toBe(false);
+  });
+
+  test('font name fields are decoded to strings', () => {
+    // fontkit returns name-table entries as raw bytes for some legacy macOS .ttc files. Any face
+    // that keeps them as bytes throws inside register() and its whole font file is dropped.
+    const cat = fontCatalog();
+    const faces = cat.facesOf('Arimo');
+    expect(faces.length).toBeGreaterThan(0);
+    for (const f of cat.families()) expect(typeof f).toBe('string');
+    for (const f of faces) {
+      expect(typeof f.family).toBe('string');
+      expect(typeof f.style).toBe('string');
+      expect(typeof f.postscriptName).toBe('string');
+    }
   });
 
   test('svg to png works', async () => {

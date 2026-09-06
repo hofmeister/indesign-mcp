@@ -151,11 +151,17 @@ export async function runDoctor(): Promise<void> {
     `OpenAI image generation: ${config.openaiApiKey ? `enabled (${config.imageModel})` : 'disabled — set OPENAI_API_KEY to enable'}`,
   ];
   try {
-    const { detectInDesign } = await import('./preview/indesign.ts');
-    const id = detectInDesign();
-    lines.push(
-      `Adobe InDesign: ${id ? `${id.name} (exact previews available)` : 'not found (built-in preview renderer will be used)'}`,
-    );
+    // Detection only says the application is on disk; ask it to run a script so the report reflects
+    // whether exact previews can actually be made right now.
+    const { probeInDesignScripting } = await import('./preview/indesign.ts');
+    const probe = await probeInDesignScripting();
+    if (probe.ok) lines.push(`Adobe InDesign: ${probe.app} (exact previews available)`);
+    else if (probe.reason === 'not-installed')
+      lines.push('Adobe InDesign: not found (built-in preview renderer will be used)');
+    else
+      lines.push(
+        `Adobe InDesign: ${probe.app} found, but it will not run scripts — the built-in renderer will be used.\n  ${probe.message}`,
+      );
   } catch (e) {
     lines.push(`Adobe InDesign: detection failed (${(e as Error).message})`);
   }

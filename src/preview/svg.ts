@@ -999,7 +999,7 @@ function renderGuides(page: PageInfo): string {
   return out.join('');
 }
 
-function bleedOf(doc: IdmlDocument): number {
+export function bleedOf(doc: IdmlDocument): number {
   const dp = firstChild(doc.resource('Preferences'), 'DocumentPreference');
   return dp ? numAttr(dp, 'DocumentBleedTopOffset', 0) : 0;
 }

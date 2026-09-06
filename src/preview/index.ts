@@ -3,9 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { IdmlDocument } from '../idml/document.ts';
 import type { Rect } from '../idml/geometry.ts';
+import { findPage, listPages } from '../idml/pages.ts';
 import { detectInDesign, renderWithInDesign } from './indesign.ts';
 import { svgToPng } from './png.ts';
-import { type RenderOptions, renderItemSvg, renderPageSvg, renderSpreadSvg } from './svg.ts';
+import { bleedOf, type RenderOptions, renderItemSvg, renderPageSvg, renderSpreadSvg } from './svg.ts';
 
 export type RendererChoice = 'auto' | 'builtin' | 'indesign';
 
@@ -61,11 +62,32 @@ interface ExactRender {
   warnings: string[];
 }
 
+/**
+ * Width in points of what InDesign will export, so a requested pixel width can be turned into the
+ * export resolution. Assuming a fixed page width here made `width` mean different things depending
+ * on the renderer.
+ */
+function exportWidthPt(
+  doc: IdmlDocument,
+  pageRef: number | string,
+  options: PreviewOptions,
+  spread: boolean,
+): number {
+  const page = findPage(doc, pageRef);
+  const bleed = options.bleed ? bleedOf(doc) : 0;
+  if (!spread) return page.width + 2 * bleed;
+  const inSpread = listPages(doc).filter((p) => p.spreadId === page.spreadId);
+  const minX = Math.min(...inSpread.map((p) => p.origin.x));
+  const maxX = Math.max(...inSpread.map((p) => p.origin.x + p.width));
+  return maxX - minX + 2 * bleed;
+}
+
 async function tryInDesign(
   doc: IdmlDocument,
   pages: number[],
   options: PreviewOptions,
   spread: boolean,
+  widthPt?: number,
 ): Promise<ExactRender | undefined> {
   const choice = options.renderer ?? 'auto';
   if (choice === 'builtin' || !doc.path) return undefined;
@@ -75,7 +97,11 @@ async function tryInDesign(
     return undefined;
   }
   try {
-    const dpi = options.dpi ?? (options.width ? Math.round((options.width / 8.27) * 1) : 150);
+    const dpi =
+      options.dpi ??
+      (options.width && widthPt
+        ? Math.max(36, Math.min(2400, Math.round((options.width * 72) / widthPt)))
+        : 150);
     const r = await renderWithInDesign(doc.path, pages, { dpi, spread });
     return { pngs: r.pngs, warnings: r.warnings };
   } catch (e) {
@@ -90,7 +116,13 @@ export async function previewPage(
   options: PreviewOptions = {},
 ): Promise<PreviewResult> {
   const pageNumber = typeof pageRef === 'number' ? pageRef : Number(pageRef) || 1;
-  const exact = await tryInDesign(doc, [pageNumber], options, false);
+  const exact = await tryInDesign(
+    doc,
+    [pageNumber],
+    options,
+    false,
+    exportWidthPt(doc, pageRef, options, false),
+  );
   let result: PreviewResult;
   if (exact?.pngs.get(pageNumber)) {
     const png = exact.pngs.get(pageNumber)!;
@@ -120,7 +152,13 @@ export async function previewSpread(
   options: PreviewOptions = {},
 ): Promise<PreviewResult> {
   const pageNumber = typeof pageRef === 'number' ? pageRef : Number(pageRef) || 1;
-  const exact = await tryInDesign(doc, [pageNumber], options, true);
+  const exact = await tryInDesign(
+    doc,
+    [pageNumber],
+    options,
+    true,
+    exportWidthPt(doc, pageRef, options, true),
+  );
   let result: PreviewResult;
   if (exact?.pngs.get(pageNumber)) {
     const png = exact.pngs.get(pageNumber)!;
