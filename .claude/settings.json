@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__indesign__describe_document",
+      "mcp__indesign__describe_reference",
+      "mcp__indesign__get_table",
+      "mcp__indesign__get_text",
+      "mcp__indesign__list_fonts",
+      "mcp__indesign__list_hyperlinks",
+      "mcp__indesign__list_images",
+      "mcp__indesign__list_items",
+      "mcp__indesign__list_layers",
+      "mcp__indesign__list_links",
+      "mcp__indesign__list_masters",
+      "mcp__indesign__list_merge_fields",
+      "mcp__indesign__list_pages",
+      "mcp__indesign__list_reference_documents",
+      "mcp__indesign__list_styles",
+      "mcp__indesign__list_swatches",
+      "mcp__indesign__list_text_variables",
+      "mcp__indesign__open_document",
+      "mcp__indesign__preflight_document",
+      "mcp__indesign__preview_capabilities",
+      "mcp__indesign__preview_document",
+      "mcp__indesign__preview_item",
+      "mcp__indesign__preview_page",
+      "mcp__indesign__preview_spread",
+      "mcp__indesign__validate_document",
+      "Bash(bun run typecheck)",
+      "Bash(bun run lint)",
+      "Bash(bun run gen:check)",
+      "Bash(bun test)"
+    ]
+  }
+}
