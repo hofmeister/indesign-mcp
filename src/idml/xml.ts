@@ -66,8 +66,8 @@ export function allElements(root: Node): Element[] {
   return out;
 }
 
-export function attr(el: Element, name: string): string | undefined {
-  return el.hasAttribute(name) ? el.getAttribute(name)! : undefined;
+export function attr(el: Element | null | undefined, name: string): string | undefined {
+  return el?.hasAttribute(name) ? el.getAttribute(name)! : undefined;
 }
 
 export function numAttr(el: Element, name: string, fallback = 0): number {

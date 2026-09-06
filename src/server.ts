@@ -18,7 +18,7 @@ import { registerShapeTools } from './tools/shapes.ts';
 import { registerObjectStyleTools, registerStyleTools } from './tools/styles.ts';
 import { registerTableTools } from './tools/tables.ts';
 import { registerTextTools } from './tools/text.ts';
-import { registerTypographyTools } from './tools/typography.ts';
+import { registerTypographyTools, registerVariableTools } from './tools/typography.ts';
 import { VERSION } from './version.ts';
 
 export const SERVER_INSTRUCTIONS = `This server creates and edits Adobe InDesign documents in IDML format (InDesign opens .idml files directly via File > Open).
@@ -87,6 +87,7 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
   registerPageOpsTools(server, ctx);
   registerTableTools(server, ctx);
   registerTypographyTools(server, ctx);
+  registerVariableTools(server, ctx);
   registerImageTools(server, ctx, imageProvider);
   const catalog = new ReferenceCatalog(config.referenceDirs.filter((d) => existsSync(d)));
   registerReferenceTools(server, ctx, catalog);

@@ -1,6 +1,6 @@
 # Tools
 
-109 tools. Parameters marked with * are required. Lengths accept a number in millimetres or a string with a unit ("10mm", "0.5in", "12pt").
+116 tools. Parameters marked with * are required. Lengths accept a number in millimetres or a string with a unit ("10mm", "0.5in", "12pt").
 
 ## Documents
 
@@ -1394,6 +1394,82 @@ Replaces placeholders in a text frame with typographic characters. Available: em
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `item` * | string | The item's name or id (see describe_document / list_items). |
 | `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `create_text_variable`
+
+Makes a text variable: a running header that repeats the current heading, the date, the file name, the chapter number, the last page number, or a piece of custom text you can change in one place. Put it into a frame with insert_text_variable, usually on a master page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string | What to call it, e.g. "Running head". |
+| `kind` * | `custom-text` \| `file-name` \| `last-page-number` \| `chapter-number` \| `creation-date` \| `modification-date` \| `output-date` \| `running-header-paragraph` \| `running-header-character` |  |
+| `text` | string | The text, for a custom-text variable. |
+| `format` | string | Date pattern for the date variables, e.g. "d MMMM yyyy" or "dd/MM/yyyy". |
+| `style` | string | The style a running header follows, e.g. the "Heading 1" paragraph style. |
+| `use` | `first` \| `last` | Which match on the page a running header takes (default the first). |
+| `textBefore` | string |  |
+| `textAfter` | string |  |
+
+### `list_text_variables`
+
+Lists the document's text variables and what each one shows.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `insert_text_variable`
+
+Puts a text variable into a text frame — in place of some text you name, or at the end of the story. On a master page this gives every page a running header or a date that updates itself.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The text frame. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `variable` * | string | Name of the variable (see list_text_variables). |
+| `replaceText` | string | Text to replace with the variable. |
+| `characterStyle` | string |  |
+
+### `delete_text_variable`
+
+Removes a text variable from the document.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+
+### `set_nested_styles`
+
+Styles the start of every paragraph automatically: "the first two words in Bold", "everything up to the first colon in Small caps". InDesign calls these nested styles; they follow the paragraph style, so the text stays editable.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string | The paragraph style to change. |
+| `nested` * | array | In order, from the start of the paragraph. An empty list removes them. |
+
+### `set_line_styles`
+
+Styles whole lines of every paragraph in a style — "the first line in small caps", for instance.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `lines` * | array |  |
+
+### `set_grep_styles`
+
+Styles every match of a pattern inside the paragraphs of a style — phone numbers in bold, acronyms in small caps, prices in a different colour. Uses InDesign's GREP (regular expression) syntax.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `grep` * | array | An empty list removes the GREP styles. |
 
 ### `list_links`
 

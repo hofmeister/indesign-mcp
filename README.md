@@ -45,7 +45,7 @@ Claude:  (creates the document, styles and swatches, lays out the frames, genera
 | Pages | add / remove / move / duplicate pages, reflow spreads, page size, margins & columns, master pages (list, apply, create, override items), layers (create, reorder, delete) |
 | Frames | text frames, rectangles, ellipses, lines, polygons & stars, free-form paths; move, resize, rotate, duplicate, step-and-repeat, group / ungroup, align, arrange (z-order), fill, stroke, corner radius, opacity & blend mode, text wrap, auto-size |
 | Text | set / append text (with `**bold**` / `*italic*` markup), per-paragraph styles, find & replace (regex), format matches, page-number markers, threaded frames, hyperlinks, special characters, anchored objects |
-| Typography | bullets and numbering, tab stops with leaders, sections and page-number style (1, i, I, a, A), prefixes |
+| Typography | bullets and numbering, tab stops with leaders, sections and page-number style (1, i, I, a, A), prefixes, text variables (running headers, dates, file name, chapter number), nested / line / GREP styles |
 | Tables | create tables, set cell text, style cells (fill, strokes, insets, alignment), insert / delete rows and columns, merge cells, column widths and row heights |
 | Styles | paragraph, character and object styles (font, size, leading, alignment, spacing, indents, hyphenation, case, colour…), update, delete, swatches (CMYK/RGB/hex, spot), gradients, fonts |
 | Pictures | place existing files (PNG/JPEG/TIFF/PSD/PDF…), fit options, relink, embed / unembed, **generate images with OpenAI** (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1-mini`), **edit/combine images** with prompts and masks, resolution check |

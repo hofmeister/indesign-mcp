@@ -92,6 +92,8 @@ export function readStory(story: Element): Paragraph[] {
           else if (c.tagName === 'Br') {
             ensure();
             current = null;
+          } else if (c.tagName === 'TextVariableInstance') {
+            push(attr(c, 'ResultText') ?? '');
           } else if (ANCHORED_TAGS.includes(c.tagName)) {
             ensure().runs.push({ text: '', characterStyle, attrs, props, anchored: c });
           } else if (INLINE_WRAPPERS.includes(c.tagName)) walkRange(c);

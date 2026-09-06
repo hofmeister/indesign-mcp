@@ -122,6 +122,56 @@ assert(
 );
 console.log(`document created and validated at ${docPath}`);
 
+// Preview and export exercise the embedded fonts, the WASM rasterizer and the PDF/PNG writers.
+const preview = (await request('tools/call', {
+  name: 'preview_page',
+  arguments: { document: docPath, page: 1, renderer: 'builtin', width: 400 },
+})) as { result?: { isError?: boolean; content?: { type?: string; data?: string; text?: string }[] } };
+assert(!preview.result?.isError, `preview_page succeeded: ${preview.result?.content?.[0]?.text}`);
+assert(
+  preview.result?.content?.some((c) => c.type === 'image' && (c.data?.length ?? 0) > 1000),
+  'preview_page returned a PNG image',
+);
+console.log('preview rendered');
+
+const exported = (await request('tools/call', {
+  name: 'export_document',
+  arguments: { document: docPath, format: 'pdf', renderer: 'builtin', outputFile: join(dir, 'smoke') },
+})) as {
+  result?: { isError?: boolean; structuredContent?: { files?: string[] }; content?: { text?: string }[] };
+};
+assert(!exported.result?.isError, `export_document succeeded: ${exported.result?.content?.[0]?.text}`);
+const pdfPath = exported.result?.structuredContent?.files?.[0];
+assert(pdfPath && existsSync(pdfPath), 'export_document wrote a PDF');
+const { readFileSync } = await import('node:fs');
+assert(readFileSync(pdfPath!).subarray(0, 5).toString('latin1') === '%PDF-', 'the PDF has a PDF header');
+
+const jpeg = (await request('tools/call', {
+  name: 'export_document',
+  arguments: {
+    document: docPath,
+    format: 'jpeg',
+    renderer: 'builtin',
+    dpi: 72,
+    pages: [1],
+    outputFile: join(dir, 'smoke-page'),
+  },
+})) as {
+  result?: { isError?: boolean; structuredContent?: { files?: string[] }; content?: { text?: string }[] };
+};
+assert(!jpeg.result?.isError, `export as JPEG succeeded: ${jpeg.result?.content?.[0]?.text}`);
+const jpegPath = jpeg.result?.structuredContent?.files?.[0];
+assert(jpegPath && existsSync(jpegPath), 'export_document wrote a JPEG');
+console.log(`exported ${pdfPath} and ${jpegPath}`);
+
+const preflight = (await request('tools/call', {
+  name: 'preflight_document',
+  arguments: { document: docPath },
+})) as { result?: { isError?: boolean; structuredContent?: { errors?: number } } };
+assert(!preflight.result?.isError, 'preflight_document succeeded');
+assert(preflight.result?.structuredContent?.errors === 0, 'preflight reports no errors');
+console.log('preflight clean');
+
 child.stdin.end();
 const code: number | null = await new Promise((resolve) => child.on('exit', resolve));
 assert(code === 0 || code === null, `clean exit after stdin closed (exit code ${code})`);

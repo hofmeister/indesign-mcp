@@ -15,6 +15,16 @@ import {
   setSection,
   setTabStops,
 } from '../idml/typography.ts';
+import {
+  createTextVariable,
+  deleteTextVariable,
+  insertTextVariable,
+  listTextVariables,
+  readStyleAutomation,
+  setGrepStyles,
+  setLineStyles,
+  setNestedStyles,
+} from '../idml/variables.ts';
 import { attr, type Element } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
 import { documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
@@ -265,6 +275,231 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
         }
         ctx.save(doc);
         return ok(`Replaced placeholders in ${changed} text run(s).`, { runs: changed });
+      }),
+  );
+}
+
+export function registerVariableTools(server: McpServer, ctx: ToolContext): void {
+  server.registerTool(
+    'create_text_variable',
+    {
+      title: 'Create a text variable',
+      description:
+        'Makes a text variable: a running header that repeats the current heading, the date, the file name, the chapter number, the last page number, or a piece of custom text you can change in one place. Put it into a frame with insert_text_variable, usually on a master page.',
+      inputSchema: z.object({
+        document: documentParam,
+        name: z.string().describe('What to call it, e.g. "Running head".'),
+        kind: z.enum([
+          'custom-text',
+          'file-name',
+          'last-page-number',
+          'chapter-number',
+          'creation-date',
+          'modification-date',
+          'output-date',
+          'running-header-paragraph',
+          'running-header-character',
+        ]),
+        text: z.string().optional().describe('The text, for a custom-text variable.'),
+        format: z
+          .string()
+          .optional()
+          .describe('Date pattern for the date variables, e.g. "d MMMM yyyy" or "dd/MM/yyyy".'),
+        style: z
+          .string()
+          .optional()
+          .describe('The style a running header follows, e.g. the "Heading 1" paragraph style.'),
+        use: z
+          .enum(['first', 'last'])
+          .optional()
+          .describe('Which match on the page a running header takes (default the first).'),
+        textBefore: z.string().optional(),
+        textAfter: z.string().optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const { document: _d, ...spec } = args;
+        createTextVariable(doc, spec);
+        ctx.save(doc);
+        return ok(`Text variable "${args.name}" created (${args.kind}).`, {
+          variables: listTextVariables(doc),
+        });
+      }),
+  );
+
+  server.registerTool(
+    'list_text_variables',
+    {
+      title: 'List text variables',
+      description: "Lists the document's text variables and what each one shows.",
+      inputSchema: z.object({ document: documentParam }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ document }) =>
+      run(() => {
+        const variables = listTextVariables(ctx.open(document));
+        return ok(
+          variables.map((v) => `${v.name} — ${v.kind}${v.detail ? ` (${v.detail})` : ''}`).join('\n') ||
+            'No text variables',
+          { variables },
+        );
+      }),
+  );
+
+  server.registerTool(
+    'insert_text_variable',
+    {
+      title: 'Insert a text variable',
+      description:
+        'Puts a text variable into a text frame — in place of some text you name, or at the end of the story. On a master page this gives every page a running header or a date that updates itself.',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam.describe('The text frame.'),
+        page: pageParam.optional(),
+        variable: z.string().describe('Name of the variable (see list_text_variables).'),
+        replaceText: z.string().optional().describe('Text to replace with the variable.'),
+        characterStyle: z.string().optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const story = storyOf(doc, args.item, args.page);
+        insertTextVariable(doc, story, args.variable, {
+          find: args.replaceText,
+          characterStyle: args.characterStyle,
+        });
+        ctx.save(doc);
+        return ok(`"${args.variable}" inserted into "${args.item}".`);
+      }),
+  );
+
+  server.registerTool(
+    'delete_text_variable',
+    {
+      title: 'Delete a text variable',
+      description: 'Removes a text variable from the document.',
+      inputSchema: z.object({ document: documentParam, name: z.string() }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        deleteTextVariable(doc, args.name);
+        ctx.save(doc);
+        return ok(`Text variable "${args.name}" deleted.`);
+      }),
+  );
+
+  server.registerTool(
+    'set_nested_styles',
+    {
+      title: 'Nested styles',
+      description:
+        'Styles the start of every paragraph automatically: "the first two words in Bold", "everything up to the first colon in Small caps". InDesign calls these nested styles; they follow the paragraph style, so the text stays editable.',
+      inputSchema: z.object({
+        document: documentParam,
+        style: z.string().describe('The paragraph style to change.'),
+        nested: z
+          .array(
+            z.object({
+              characterStyle: z.string(),
+              through: z
+                .string()
+                .describe(
+                  'Where it stops: a literal string like ":" or " — ", or one of Sentence, AnyWord, AnyCharacter, Letters, Digits, Tabs, ForcedLineBreak, EndNestedStyle, EmSpace, EnSpace, NonbreakingSpace.',
+                ),
+              repetition: z.number().int().min(1).optional().describe('How many of them, e.g. 2 words.'),
+              inclusive: z
+                .boolean()
+                .optional()
+                .describe('Include the delimiter itself in the styled text (default true).'),
+            }),
+          )
+          .describe('In order, from the start of the paragraph. An empty list removes them.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const style = resolveStyle(doc, 'ParagraphStyle', args.style);
+        setNestedStyles(doc, style, args.nested);
+        ctx.save(doc);
+        return ok(
+          args.nested.length
+            ? `"${args.style}" now applies ${args.nested.length} nested style(s).`
+            : `Nested styles removed from "${args.style}".`,
+          { ...readStyleAutomation(style) },
+        );
+      }),
+  );
+
+  server.registerTool(
+    'set_line_styles',
+    {
+      title: 'Line styles',
+      description:
+        'Styles whole lines of every paragraph in a style — "the first line in small caps", for instance.',
+      inputSchema: z.object({
+        document: documentParam,
+        style: z.string(),
+        lines: z.array(
+          z.object({
+            characterStyle: z.string(),
+            lines: z.number().int().min(1).optional().describe('How many lines (default 1).'),
+            repeat: z.boolean().optional().describe('Repeat the pattern down the paragraph.'),
+          }),
+        ),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const style = resolveStyle(doc, 'ParagraphStyle', args.style);
+        setLineStyles(doc, style, args.lines);
+        ctx.save(doc);
+        return ok(`"${args.style}" now applies ${args.lines.length} line style(s).`, {
+          ...readStyleAutomation(style),
+        });
+      }),
+  );
+
+  server.registerTool(
+    'set_grep_styles',
+    {
+      title: 'GREP styles',
+      description:
+        "Styles every match of a pattern inside the paragraphs of a style — phone numbers in bold, acronyms in small caps, prices in a different colour. Uses InDesign's GREP (regular expression) syntax.",
+      inputSchema: z.object({
+        document: documentParam,
+        style: z.string(),
+        grep: z
+          .array(
+            z.object({
+              characterStyle: z.string(),
+              pattern: z
+                .string()
+                .describe(
+                  'GREP pattern, e.g. "\\d+([.,]\\d+)?" for numbers or "\\b[A-Z]{2,}\\b" for acronyms.',
+                ),
+            }),
+          )
+          .describe('An empty list removes the GREP styles.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const style = resolveStyle(doc, 'ParagraphStyle', args.style);
+        setGrepStyles(doc, style, args.grep);
+        ctx.save(doc);
+        return ok(
+          args.grep.length
+            ? `"${args.style}" now applies ${args.grep.length} GREP style(s).`
+            : `GREP styles removed from "${args.style}".`,
+          { ...readStyleAutomation(style) },
+        );
       }),
   );
 }
