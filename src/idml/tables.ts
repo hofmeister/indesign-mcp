@@ -401,7 +401,9 @@ export function insertTableRows(
     }
   }
   // renumber the Row elements themselves
-  children(table, 'Row').forEach((r, i) => r.setAttribute('Name', String(i)));
+  children(table, 'Row').forEach((r, i) => {
+    r.setAttribute('Name', String(i));
+  });
   table.setAttribute('BodyRowCount', String(info.rows - info.headerRows - info.footerRows + n));
   sortCells(table);
 }
@@ -417,7 +419,9 @@ export function deleteTableRows(table: Element, at: number, count = 1): void {
   );
   const rows = children(table, 'Row');
   for (let i = index; i < index + n && i < rows.length; i++) removeElement(rows[i]!);
-  children(table, 'Row').forEach((r, i) => r.setAttribute('Name', String(i)));
+  children(table, 'Row').forEach((r, i) => {
+    r.setAttribute('Name', String(i));
+  });
   const header = Math.max(0, info.headerRows - Math.max(0, Math.min(n, info.headerRows - index)));
   table.setAttribute('HeaderRowCount', String(header));
   table.setAttribute('BodyRowCount', String(Math.max(0, info.rows - n - header - info.footerRows)));
@@ -467,7 +471,9 @@ export function insertTableColumns(
       table.appendChild(cell);
     }
   }
-  children(table, 'Column').forEach((c, i) => c.setAttribute('Name', String(i)));
+  children(table, 'Column').forEach((c, i) => {
+    c.setAttribute('Name', String(i));
+  });
   table.setAttribute('ColumnCount', String(info.columns + n));
   sortCells(table);
 }
@@ -483,7 +489,9 @@ export function deleteTableColumns(table: Element, at: number, count = 1): void 
   );
   const cols = children(table, 'Column');
   for (let i = index; i < index + n && i < cols.length; i++) removeElement(cols[i]!);
-  children(table, 'Column').forEach((c, i) => c.setAttribute('Name', String(i)));
+  children(table, 'Column').forEach((c, i) => {
+    c.setAttribute('Name', String(i));
+  });
   table.setAttribute('ColumnCount', String(info.columns - n));
   sortCells(table);
 }

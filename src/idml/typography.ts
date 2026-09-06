@@ -435,7 +435,7 @@ export interface AnchorSpec {
  * or at the end of the story.
  */
 export function anchorItem(
-  doc: IdmlDocument,
+  _doc: IdmlDocument,
   story: Element,
   item: Element,
   options: AnchorSpec & { find?: string } = {},

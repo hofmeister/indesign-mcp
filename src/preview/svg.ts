@@ -15,9 +15,10 @@ import {
   type Rect,
   readPaths,
 } from '../idml/geometry.ts';
-import { graphicChild, isPageItem, linkUri, linkUriToPath } from '../idml/items.ts';
+import { graphicChild, isPageItem, itemSpreadBounds, linkUri, linkUriToPath } from '../idml/items.ts';
 import { layerElements } from '../idml/layers.ts';
-import { findPage, listPages, type PageInfo } from '../idml/pages.ts';
+import { findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
+import { readStoryPlainText } from '../idml/stories.ts';
 import { attr, children, type Element, firstChild, getProperty, numAttr } from '../idml/xml.ts';
 import { rgbToCss, SwatchResolver } from './color.ts';
 import { fontCatalog } from './fonts.ts';
@@ -709,6 +710,54 @@ export function renderItemSvg(
     )
     .replace(/width="[^"]*" height="[^"]*"/, `width="${fmt(view.width)}" height="${fmt(view.height)}"`);
   return { ...full, svg, width: view.width, height: view.height };
+}
+
+export interface OversetFrame {
+  frame: string;
+  name: string | undefined;
+  page: number | undefined;
+  storyId: string;
+  text: string;
+}
+
+/** Text frames whose story does not fit (InDesign's red "+" overset marker). */
+export function findOversetFrames(doc: IdmlDocument): OversetFrame[] {
+  const ctx = new RenderContext(doc, {});
+  const out: OversetFrame[] = [];
+  const scan = (container: Element) => {
+    const spreadId = attr(container, 'Self') ?? '';
+    const visit = (el: Element) => {
+      if (el.tagName === 'TextFrame') {
+        // only the last frame of a thread can be overset
+        const next = attr(el, 'NextTextFrame');
+        if (!next || next === 'n') {
+          let overset = false;
+          try {
+            overset = ctx.linesFor(el).overset;
+          } catch {
+            overset = false;
+          }
+          if (overset) {
+            const bounds = itemSpreadBounds(el);
+            const page = bounds ? pageForSpreadRect(ctx.pages, spreadId, bounds)?.index : undefined;
+            const storyId = attr(el, 'ParentStory') ?? '';
+            const story = doc.story(storyId);
+            out.push({
+              frame: attr(el, 'Self') ?? '',
+              name: attr(el, 'Name') && attr(el, 'Name') !== '$ID/' ? attr(el, 'Name') : undefined,
+              page,
+              storyId,
+              text: story ? readStoryPlainText(story).slice(0, 80) : '',
+            });
+          }
+        }
+      }
+      if (el.tagName === 'Group') for (const c of children(el)) visit(c);
+    };
+    for (const el of children(container)) visit(el);
+  };
+  for (const spread of doc.spreads()) scan(spread);
+  return out;
 }
 
 export type { TextAttrs };

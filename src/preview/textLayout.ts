@@ -5,7 +5,7 @@
 
 import type { GlyphRun } from 'fontkit';
 import type { IdmlDocument } from '../idml/document.ts';
-import { type Paragraph, type Run, readStory } from '../idml/stories.ts';
+import { type Run, readStory } from '../idml/stories.ts';
 import { styleElements } from '../idml/styles.ts';
 import { attr, children, type Element, firstChild, getProperty } from '../idml/xml.ts';
 import type { FontCatalog, FontFace, FontMatch } from './fonts.ts';

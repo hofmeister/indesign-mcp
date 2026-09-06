@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 
 export interface InDesignInstall {
   platform: 'darwin' | 'win32';
@@ -169,4 +169,118 @@ export async function renderWithInDesign(
       // ignore
     }
   }
+}
+
+/** ExtendScript that exports a document as PDF, JPEG or PNG. */
+function fileExportScript(
+  idmlPath: string,
+  outPath: string,
+  format: 'pdf' | 'jpeg' | 'png',
+  options: { pages?: string; dpi?: number; quality?: number; spreads?: boolean; bleed?: boolean },
+): string {
+  const js = (s: string) => JSON.stringify(s);
+  const dpi = Math.max(36, Math.min(2400, Math.round(options.dpi ?? 300)));
+  const range = options.pages ? `prefs.pageString = ${js(options.pages)};` : '';
+  const body =
+    format === 'pdf'
+      ? `
+    var preset = app.pdfExportPresets.itemByName("[High Quality Print]");
+    var prefs = app.pdfExportPreferences;
+    prefs.pageRange = ${options.pages ? js(options.pages) : 'PageRange.ALL_PAGES'};
+    prefs.exportReaderSpreads = ${options.spreads ? 'true' : 'false'};
+    prefs.useDocumentBleedWithPDF = ${options.bleed ? 'true' : 'false'};
+    if (preset.isValid) doc.exportFile(ExportFormat.PDF_TYPE, File(${js(outPath)}), false, preset);
+    else doc.exportFile(ExportFormat.PDF_TYPE, File(${js(outPath)}), false);`
+      : format === 'jpeg'
+        ? `
+    var prefs = app.jpegExportPreferences;
+    prefs.exportResolution = ${dpi};
+    prefs.jpegQuality = JPEGOptionsQuality.MAXIMUM;
+    prefs.jpegExportRange = ${options.pages ? 'ExportRangeOrAllPages.EXPORT_RANGE' : 'ExportRangeOrAllPages.EXPORT_ALL'};
+    prefs.exportingSpread = ${options.spreads ? 'true' : 'false'};
+    prefs.useDocumentBleeds = ${options.bleed ? 'true' : 'false'};
+    ${range}
+    doc.exportFile(ExportFormat.JPG, File(${js(outPath)}), false);`
+        : `
+    var prefs = app.pngExportPreferences;
+    prefs.exportResolution = ${dpi};
+    prefs.pngQuality = PNGQualityEnum.MAXIMUM;
+    prefs.pngColorSpace = PNGColorSpaceEnum.RGB;
+    prefs.transparentBackground = false;
+    prefs.pngExportRange = ${options.pages ? 'ExportRangeOrAllPages.EXPORT_RANGE' : 'ExportRangeOrAllPages.EXPORT_ALL'};
+    prefs.exportingSpread = ${options.spreads ? 'true' : 'false'};
+    prefs.useDocumentBleeds = ${options.bleed ? 'true' : 'false'};
+    ${range}
+    doc.exportFile(ExportFormat.PNG_FORMAT, File(${js(outPath)}), false);`;
+  return `
+(function () {
+  app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
+  var doc = app.open(File(${js(idmlPath)}), false);
+  try {${body}
+  } finally {
+    doc.close(SaveOptions.NO);
+  }
+})();
+`;
+}
+
+/** Runs an ExtendScript through the installed InDesign. */
+async function runScript(install: InDesignInstall, script: string, timeout: number): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-script-'));
+  const jsxPath = join(dir, 'run.jsx');
+  writeFileSync(jsxPath, script);
+  try {
+    if (install.platform === 'darwin') {
+      const apple = `tell application id "com.adobe.InDesign"\n do script (POSIX file ${JSON.stringify(jsxPath)}) language javascript\nend tell`;
+      const r = await runCommand('osascript', ['-e', apple], timeout);
+      if (r.code !== 0) throw new Error(`osascript failed: ${r.stderr.trim() || r.stdout.trim()}`);
+    } else {
+      const vbs = `Set app = CreateObject("InDesign.Application")\napp.DoScript ${JSON.stringify(jsxPath).replace(/\\\\/g, '\\')}, 1246973031\n`;
+      const vbsPath = join(dir, 'run.vbs');
+      writeFileSync(vbsPath, vbs);
+      const r = await runCommand('cscript', ['//nologo', vbsPath], timeout);
+      if (r.code !== 0) throw new Error(`cscript failed: ${r.stderr.trim() || r.stdout.trim()}`);
+    }
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * Exports the document to PDF/JPEG/PNG through the installed InDesign, for output identical to
+ * what a designer gets from File > Export. Throws when InDesign is unavailable.
+ */
+export async function exportWithInDesign(
+  idmlPath: string,
+  outPath: string,
+  format: 'pdf' | 'jpeg' | 'png',
+  options: {
+    pages?: string;
+    dpi?: number;
+    quality?: number;
+    spreads?: boolean;
+    bleed?: boolean;
+    timeoutMs?: number;
+  } = {},
+): Promise<{ app: string; files: string[] }> {
+  const install = detectInDesign();
+  if (!install) throw new Error('Adobe InDesign is not installed on this computer');
+  await runScript(
+    install,
+    fileExportScript(idmlPath, outPath, format, options),
+    options.timeoutMs ?? 180_000,
+  );
+  const dir = dirname(outPath);
+  const base = basename(outPath, extname(outPath));
+  const files = existsSync(outPath)
+    ? [outPath]
+    : readdirSync(dir)
+        .filter((f) => f.startsWith(base) && f.endsWith(extname(outPath)))
+        .map((f) => join(dir, f));
+  if (!files.length) throw new Error('InDesign produced no file');
+  return { app: install.name, files };
 }

@@ -42,12 +42,15 @@ Claude:  (creates the document, styles and swatches, lays out the frames, genera
 | Area | Tools |
 |---|---|
 | Documents | new document (page size presets, orientation, pages, margins, columns, bleed), open, describe, validate (structure **and** Adobe's IDML schema), save as |
-| Pages | add / remove pages, page size, margins & columns, master pages (list, apply, create), layers, ruler-guide-free grid via margins |
-| Frames | text frames, rectangles, ellipses, lines; move, resize, rotate, duplicate, align, arrange (z-order), fill, stroke, corner radius, opacity & blend mode, text wrap, auto-size |
-| Text | set / append text (with `**bold**` / `*italic*` markup), per-paragraph styles, find & replace (regex), format matches (character style or local formatting), page-number markers, threaded frames |
-| Styles | paragraph & character styles (font, size, leading, alignment, spacing, indents, hyphenation, case, colour…), update, delete, swatches (CMYK/RGB/hex, spot), fonts |
-| Pictures | place existing files (PNG/JPEG/TIFF/PSD/PDF…), fit options, **generate images with OpenAI** (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1-mini`), **edit/combine images** with prompts and masks, resolution check |
+| Pages | add / remove / move / duplicate pages, reflow spreads, page size, margins & columns, master pages (list, apply, create, override items), layers (create, reorder, delete) |
+| Frames | text frames, rectangles, ellipses, lines, polygons & stars, free-form paths; move, resize, rotate, duplicate, step-and-repeat, group / ungroup, align, arrange (z-order), fill, stroke, corner radius, opacity & blend mode, text wrap, auto-size |
+| Text | set / append text (with `**bold**` / `*italic*` markup), per-paragraph styles, find & replace (regex), format matches, page-number markers, threaded frames, hyperlinks, special characters, anchored objects |
+| Typography | bullets and numbering, tab stops with leaders, sections and page-number style (1, i, I, a, A), prefixes |
+| Tables | create tables, set cell text, style cells (fill, strokes, insets, alignment), insert / delete rows and columns, merge cells, column widths and row heights |
+| Styles | paragraph, character and object styles (font, size, leading, alignment, spacing, indents, hyphenation, case, colour…), update, delete, swatches (CMYK/RGB/hex, spot), gradients, fonts |
+| Pictures | place existing files (PNG/JPEG/TIFF/PSD/PDF…), fit options, relink, embed / unembed, **generate images with OpenAI** (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1-mini`), **edit/combine images** with prompts and masks, resolution check |
 | References | list bundled and your own `.idml` files, describe them, start a new document from one, import styles/swatches/fonts, copy master pages or whole pages |
+| Production | preflight (overset text, low-resolution or missing pictures, missing fonts, RGB in print work, hairlines, missing bleed), package for a printer, data merge from CSV/JSON, export to PDF / PNG / JPEG |
 | Previews | render a page, a spread, one item, or a contact sheet of all pages to PNG. Uses **Adobe InDesign itself when it is installed** (pixel-exact), otherwise a built-in renderer with real fonts |
 
 The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompts (`design-from-brief`, `match-reference-look`, `review-layout`) appear as slash commands in Claude Desktop.
@@ -58,6 +61,7 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 - **Measurements** default to millimetres from the top-left corner of the page; you can say `"0.5in"` or `"12pt"` anywhere.
 - **Fonts are not embedded.** Claude tells you which fonts a document uses; they must be installed on the computer that opens it in InDesign. Previews substitute missing fonts with metric-compatible ones and say so.
 - **Pictures stay linked**, like in InDesign. Generated and edited pictures are saved in a `Links` folder next to the document.
+- **Exporting**: with InDesign installed, `export_document` lets InDesign make the PDF (press-ready, colour-managed). Without it the built-in exporter writes a vector PDF with the text as outlines — fine for proofs and web use, not for a printer.
 - **Validation** runs against Adobe's own IDML schema (InDesign 2020 is bundled; newer schema versions can be added, see `schemas/idml/README.md`).
 
 ## Settings
