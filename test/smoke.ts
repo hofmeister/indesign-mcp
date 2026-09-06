@@ -64,6 +64,16 @@ function assert(cond: unknown, message: string): asserts cond {
   }
 }
 
+/** The text a tool answered with, so a failure says why and not just which call failed. */
+function said(result: unknown): string {
+  const content = (result as { result?: { content?: { type?: string; text?: string }[] } })?.result?.content;
+  return (content ?? [])
+    .filter((c) => c.type !== 'image')
+    .map((c) => c.text ?? '')
+    .join('\n')
+    .slice(0, 800);
+}
+
 const init = (await request('initialize', {
   protocolVersion: '2025-06-18',
   capabilities: {},
@@ -81,7 +91,10 @@ console.log(`tools: ${names.length}`);
 const info = (await request('tools/call', { name: 'server_info', arguments: {} })) as {
   result?: { structuredContent?: { version?: string }; isError?: boolean };
 };
-assert(!info.result?.isError && info.result?.structuredContent?.version, 'server_info returns a version');
+assert(
+  !info.result?.isError && info.result?.structuredContent?.version,
+  `server_info returns a version: ${said(info)}`,
+);
 console.log(`server_info: ${JSON.stringify(info.result?.structuredContent)}`);
 
 // Create a document through the binary: proves the embedded template and XML pipeline work when compiled.
@@ -94,7 +107,7 @@ const created = (await request('tools/call', {
   name: 'new_document',
   arguments: { path: docPath, pageSize: 'A4', pages: 2, margins: '15mm' },
 })) as { result?: { isError?: boolean; content?: { text?: string }[] } };
-assert(!created.result?.isError, `new_document succeeded: ${created.result?.content?.[0]?.text}`);
+assert(!created.result?.isError, `new_document succeeded: ${said(created)}`);
 assert(existsSync(docPath), 'document file written');
 const frame = (await request('tools/call', {
   name: 'add_text_frame',
@@ -109,7 +122,7 @@ const frame = (await request('tools/call', {
     name: 'Title',
   },
 })) as { result?: { isError?: boolean; content?: { text?: string }[] } };
-assert(!frame.result?.isError, `add_text_frame succeeded: ${frame.result?.content?.[0]?.text}`);
+assert(!frame.result?.isError, `add_text_frame succeeded: ${said(frame)}`);
 const validated = (await request('tools/call', {
   name: 'validate_document',
   arguments: { document: docPath },
@@ -118,7 +131,7 @@ const validated = (await request('tools/call', {
 };
 assert(
   !validated.result?.isError && validated.result?.structuredContent?.errors === 0,
-  'validate_document reports 0 errors',
+  `validate_document reports 0 errors: ${said(validated)}`,
 );
 console.log(`document created and validated at ${docPath}`);
 
@@ -127,7 +140,7 @@ const preview = (await request('tools/call', {
   name: 'preview_page',
   arguments: { document: docPath, page: 1, renderer: 'builtin', width: 400 },
 })) as { result?: { isError?: boolean; content?: { type?: string; data?: string; text?: string }[] } };
-assert(!preview.result?.isError, `preview_page succeeded: ${preview.result?.content?.[0]?.text}`);
+assert(!preview.result?.isError, `preview_page succeeded: ${said(preview)}`);
 assert(
   preview.result?.content?.some((c) => c.type === 'image' && (c.data?.length ?? 0) > 1000),
   'preview_page returned a PNG image',
@@ -140,7 +153,7 @@ const exported = (await request('tools/call', {
 })) as {
   result?: { isError?: boolean; structuredContent?: { files?: string[] }; content?: { text?: string }[] };
 };
-assert(!exported.result?.isError, `export_document succeeded: ${exported.result?.content?.[0]?.text}`);
+assert(!exported.result?.isError, `export_document succeeded: ${said(exported)}`);
 const pdfPath = exported.result?.structuredContent?.files?.[0];
 assert(pdfPath && existsSync(pdfPath), 'export_document wrote a PDF');
 const { readFileSync } = await import('node:fs');
@@ -159,7 +172,7 @@ const jpeg = (await request('tools/call', {
 })) as {
   result?: { isError?: boolean; structuredContent?: { files?: string[] }; content?: { text?: string }[] };
 };
-assert(!jpeg.result?.isError, `export as JPEG succeeded: ${jpeg.result?.content?.[0]?.text}`);
+assert(!jpeg.result?.isError, `export as JPEG succeeded: ${said(jpeg)}`);
 const jpegPath = jpeg.result?.structuredContent?.files?.[0];
 assert(jpegPath && existsSync(jpegPath), 'export_document wrote a JPEG');
 console.log(`exported ${pdfPath} and ${jpegPath}`);
@@ -168,8 +181,8 @@ const preflight = (await request('tools/call', {
   name: 'preflight_document',
   arguments: { document: docPath },
 })) as { result?: { isError?: boolean; structuredContent?: { errors?: number } } };
-assert(!preflight.result?.isError, 'preflight_document succeeded');
-assert(preflight.result?.structuredContent?.errors === 0, 'preflight reports no errors');
+assert(!preflight.result?.isError, `preflight_document succeeded: ${said(preflight)}`);
+assert(preflight.result?.structuredContent?.errors === 0, `preflight reports no errors: ${said(preflight)}`);
 console.log('preflight clean');
 
 child.stdin.end();

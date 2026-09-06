@@ -194,7 +194,19 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
   checked.push('Fonts');
   const catalog = fontCatalog();
   for (const font of fontsUsed(doc)) {
-    const match = catalog.match(font, 'Regular');
+    // A preflight is a report: a font this computer cannot read is something to say, never a
+    // reason for the whole check to fail.
+    let match: ReturnType<typeof catalog.match> | undefined;
+    try {
+      match = catalog.match(font, 'Regular');
+    } catch (e) {
+      add({
+        check: 'font-unreadable',
+        severity: 'warning',
+        message: `Font "${font}" could not be checked on this computer: ${(e as Error).message}`,
+      });
+      continue;
+    }
     if (match.substituted)
       add({
         check: 'missing-font',

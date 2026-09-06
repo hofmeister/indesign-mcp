@@ -158,10 +158,16 @@ export class FontCatalog {
       const parsed = fontkit.create(readFileSync(info.path) as unknown as Buffer) as unknown as {
         fonts?: FontFace[];
       } & FontFace;
-      f = parsed.fonts ? parsed.fonts[info.index]! : parsed;
+      f = parsed.fonts ? parsed.fonts[info.index] : parsed;
+      if (!f) throw new Error(`${info.path} has no face ${info.index}`);
       this.loaded.set(key, f);
     }
     return f;
+  }
+
+  /** Drops a face that turned out to be unreadable, so it is not offered again. */
+  private forget(info: FaceInfo): void {
+    this.faces = this.faces.filter((f) => f !== info);
   }
 
   /**
@@ -197,18 +203,29 @@ export class FontCatalog {
       if (!candidates.length) candidates = this.faces.filter((f) => f.bundled);
       if (fam) this.substitutions.set(`${fam} ${sty}`.trim(), fallbackFamily);
     }
-    let best = candidates[0]!;
-    let bestScore = Number.POSITIVE_INFINITY;
-    for (const c of candidates) {
-      const exactStyle = c.style.toLowerCase() === sty.toLowerCase() ? -1000 : 0;
-      const score = exactStyle + Math.abs(c.weight - wantWeight) + (c.italic !== wantItalic ? 500 : 0);
-      if (score < bestScore) {
-        bestScore = score;
-        best = c;
+    const score = (c: FaceInfo) =>
+      (c.style.toLowerCase() === sty.toLowerCase() ? -1000 : 0) +
+      Math.abs(c.weight - wantWeight) +
+      (c.italic !== wantItalic ? 500 : 0);
+    const ranked = [...candidates].sort((a, b) => score(a) - score(b));
+    // A font file can be listed and still fail to parse (a broken or exotic system font); try the
+    // next best one instead of failing the whole call, and fall back to the bundled faces.
+    for (const c of ranked) {
+      try {
+        return { face: this.load(c), info: c, substituted };
+      } catch (e) {
+        log.warn(`could not read font ${c.path}: ${(e as Error).message}`);
+        this.forget(c);
       }
     }
-    if (!best) throw new Error('No fonts available for previews');
-    return { face: this.load(best), info: best, substituted };
+    for (const c of this.faces.filter((f) => f.bundled)) {
+      try {
+        return { face: this.load(c), info: c, substituted: true };
+      } catch {
+        this.forget(c);
+      }
+    }
+    throw new Error('No usable fonts were found for previews');
   }
 
   /** Raw bytes of every face used so far (for renderers that need font files). */
