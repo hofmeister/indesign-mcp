@@ -3,36 +3,68 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to raise for this release'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+        required: true
 
 permissions:
   contents: write
+
+# One release at a time: two dispatches at once would both try to move master.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   BUN_VERSION: 1.3.11
 
 jobs:
   check:
-    name: Verify tag and run tests
+    name: Verify version and run tests
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.sha.outputs.sha }}
       sign: ${{ steps.sign.outputs.sign }}
     steps:
+      # A dispatched release always comes off master, whatever ref the run was started from, and
+      # needs the tags to work out which version comes next.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'master' || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - name: Tag must match package.json version
+      - name: Work out the version being released
         id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          pkg=$(bun -e 'console.log(require("./package.json").version)')
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$pkg" != "$tag" ]; then
-            echo "package.json version ($pkg) does not match tag ($tag)"; exit 1
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            bun run scripts/version.ts --bump "$BUMP" --write --github
+          else
+            pkg=$(bun -e 'console.log(require("./package.json").version)')
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$pkg" != "$tag" ]; then
+              echo "package.json version ($pkg) does not match tag ($tag)"; exit 1
+            fi
+            {
+              echo "version=$pkg"
+              echo "tag=$GITHUB_REF_NAME"
+              echo "first=false"
+            } >> "$GITHUB_OUTPUT"
           fi
-          echo "version=$pkg" >> "$GITHUB_OUTPUT"
       - name: Are Apple signing secrets configured?
         id: sign
         env:
@@ -42,6 +74,36 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun test
+      # Everything passed, so record the release: the version bump lands on master and the tag
+      # points at that commit. A tag push releases the commit it already points at. Pushes made
+      # with GITHUB_TOKEN do not start another workflow run, so this tag does not re-trigger the
+      # release; the rest of this run publishes it.
+      - name: Commit the version and tag it
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists — release it by pushing the tag, or pick another bump"; exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --quiet -- package.json; then
+            git add package.json
+            git commit -m "Release $TAG"
+            git push origin "HEAD:master"
+          fi
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "refs/tags/$TAG"
+      - name: The commit being released
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: echo "Releasing $TAG from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build binaries
@@ -49,6 +111,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -126,6 +190,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -172,6 +238,8 @@ jobs:
           EOF
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          name: ${{ needs.check.outputs.tag }}
           body_path: notes.md
           generate_release_notes: true
           files: |

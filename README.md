@@ -112,7 +112,13 @@ Layout: `src/idml` (IDML package, XML, pages, items, stories, styles, images, va
 
 ### Releasing
 
-CI runs lint, type check, tests, cross-compiles every target and smoke-tests the binaries on Linux, macOS and Windows for every pull request. Pushing a tag `vX.Y.Z` that matches `package.json` builds the executables, the `.mcpb` bundles and a GitHub Release. If the repository secrets `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD` exist, the macOS binaries are signed and notarized; otherwise they are ad-hoc signed and `setup` clears the quarantine flag.
+CI runs lint, type check, tests, cross-compiles every target and smoke-tests the binaries on Linux, macOS and Windows for every pull request.
+
+To publish a release, run the **Release** workflow from the Actions tab and pick `patch`, `minor` or `major`. It works off `master`: the tests run first, then the new version is written to `package.json`, committed and tagged, and the executables, the `.mcpb` bundles and the GitHub Release are built from that commit. The version counts up from the newest `vX.Y.Z` tag; with no tags yet, the version already in `package.json` is released as it stands and the choice is ignored.
+
+Pushing a tag `vX.Y.Z` that matches `package.json` still works and releases the commit the tag points at.
+
+If the repository secrets `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD` exist, the macOS binaries are signed and notarized; otherwise they are ad-hoc signed and `setup` clears the quarantine flag.
 
 ### Making it better with your own files
 
