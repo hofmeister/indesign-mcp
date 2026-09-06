@@ -46,7 +46,7 @@ export const paragraphInput = z.object({
  * looking at the array; the truth is usually a bad escape in a string several levels down.
  */
 function tolerantInput(inner: z.ZodType): z.ZodType {
-  return z.preprocess((v, ctx) => {
+  const wrapped = z.preprocess((v, ctx) => {
     if (typeof v !== 'string' || inner.safeParse(v).success) return v;
     const t = v.trim();
     if (t !== '' && Number.isFinite(Number(t)) && inner.safeParse(Number(t)).success) return Number(t);
@@ -63,6 +63,9 @@ function tolerantInput(inner: z.ZodType): z.ZodType {
       return v;
     }
   }, inner);
+  // Carry the description onto the wrapper. Generated JSON Schema finds it on the inner schema
+  // either way, but code that merges shapes (the family tools) reads it from the field itself.
+  return inner.description ? wrapped.describe(inner.description) : wrapped;
 }
 
 /**

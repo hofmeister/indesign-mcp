@@ -15,17 +15,18 @@ const { tools } = await client.listTools();
 const { prompts } = await client.listPrompts();
 
 const groups: [string, RegExp][] = [
+  ['Everything at once', /^(batch|list)$/],
   [
     'Documents',
     /^(new_document|open_document|describe_document|validate_document|save_document_as|set_document_options|server_info)$/,
   ],
   [
     'Pages, masters and layers',
-    /^(list_pages|add_pages|remove_pages|set_page_size|set_margins_and_columns|list_masters|apply_master|create_master|list_layers|create_layer|set_layer_options|set_item_layer)$/,
+    /^(edit_pages|edit_layers|set_page_size|set_margins_and_columns|apply_master|create_master|override_master_item|add_guides)$/,
   ],
   [
     'Frames and shapes',
-    /^(list_items|add_text_frame|add_rectangle|add_ellipse|add_line|move_item|resize_item|rotate_item|set_appearance|delete_item|duplicate_item|rename_item|arrange_item|align_items|set_text_frame_options|set_text_wrap|fit_frame_to_content)$/,
+    /^(add_text_frame|add_shape|edit_item|set_appearance|group_items|ungroup_items|step_and_repeat|set_text_frame_options|set_text_wrap)$/,
   ],
   [
     'Text',
@@ -33,14 +34,17 @@ const groups: [string, RegExp][] = [
   ],
   [
     'Styles, swatches and fonts',
-    /^(list_styles|create_paragraph_style|create_character_style|update_style|delete_style|list_swatches|create_swatch|list_fonts)$/,
+    /^(create_paragraph_style|create_character_style|update_style|delete_style|create_swatch|create_gradient|create_object_style|update_object_style|apply_object_style)$/,
   ],
-  ['Pictures', /^(place_image|set_image_fit|generate_image|edit_image|list_images)$/],
+  [
+    'Pictures',
+    /^(place_image|set_image_fit|generate_image|edit_image|relink_image|embed_images|unembed_images)$/,
+  ],
   [
     'Reference documents',
-    /^(list_reference_documents|describe_reference|add_reference_folder|new_document_from_reference|import_styles_from_reference|copy_master_from_reference|copy_page_from_reference)$/,
+    /^(describe_reference|add_reference_folder|new_document_from_reference|import_styles_from_reference|copy_master_from_reference|copy_page_from_reference)$/,
   ],
-  ['Previews', /^preview_/],
+  ['Previews', /^(preview|preview_capabilities)$/],
 ];
 
 function params(schema: unknown): string {
