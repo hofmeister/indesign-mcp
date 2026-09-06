@@ -26,7 +26,7 @@ export const SERVER_INSTRUCTIONS = `This server creates and edits Adobe InDesign
 How to work:
 1. Start with new_document (or open_document for an existing file), then describe_document to see pages, items (with names and ids), styles and swatches.
 2. Build the layout with InDesign vocabulary: pages and master pages, text frames, rectangles/ellipses/lines, images, paragraph and character styles, swatches, layers.
-3. Positions are measured from the top-left corner of the page in millimetres unless another unit is given ("10mm", "0.5in", "12pt"). Give items names ("Headline", "Hero image") so you can edit them later.
+3. Positions are measured from the top-left corner of the page in millimetres unless another unit is given ("10mm", "0.5in", "12pt"); width and height are sizes, not coordinates. Give items names ("Headline", "Hero image") so you can edit them later. Tools refuse impossible input (a frame with no width, a line with two identical ends, margins that leave no room) and add a "Note:" when something lands on the pasteboard or hangs over the trim — read those notes and fix the placement unless the user wanted a bleed.
 4. Every edit is saved to the .idml file immediately. Run validate_document when you are done, and tell the user where the file is.
 5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.
 6. References: list_reference_documents shows InDesign documents you can learn from; prefer new_document_from_reference or import_styles_from_reference over inventing styles from scratch.

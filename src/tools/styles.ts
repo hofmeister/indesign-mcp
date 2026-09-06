@@ -21,19 +21,24 @@ const textStyleFields = {
     .optional()
     .describe('Font family, e.g. "Helvetica Neue". Must be installed on the designer\'s computer.'),
   fontStyle: z.string().optional().describe('Font style name: Regular, Bold, Italic, Light, Semibold…'),
-  size: z.number().positive().optional().describe('Point size.'),
+  size: z.number().min(0.1).max(1296).optional().describe('Point size (0.1–1296, as in InDesign).'),
   leading: z
-    .union([z.number().positive(), z.literal('auto')])
+    .union([z.number().min(0).max(5000), z.literal('auto')])
     .optional()
     .describe('Line spacing in points, or "auto".'),
   color: colorParam.optional(),
-  tracking: z.number().optional(),
+  tracking: z
+    .number()
+    .min(-1000)
+    .max(10000)
+    .optional()
+    .describe('Letter spacing in 1/1000 em (-1000 to 10000).'),
   capitalization: z.enum(['normal', 'small-caps', 'all-caps', 'cap-to-small-cap']).optional(),
   underline: z.boolean().optional(),
   strikeThrough: z.boolean().optional(),
   position: z.enum(['normal', 'superscript', 'subscript']).optional(),
-  horizontalScale: z.number().optional(),
-  baselineShift: z.number().optional(),
+  horizontalScale: z.number().min(1).max(1000).optional().describe('Percent (1–1000).'),
+  baselineShift: z.number().min(-5000).max(5000).optional().describe('Points.'),
 };
 
 const paragraphFields = {
@@ -50,15 +55,15 @@ const paragraphFields = {
       'away-from-binding',
     ])
     .optional(),
-  spaceBefore: z.number().min(0).optional().describe('Points.'),
-  spaceAfter: z.number().min(0).optional(),
-  leftIndent: z.number().min(0).optional(),
-  rightIndent: z.number().min(0).optional(),
-  firstLineIndent: z.number().optional(),
+  spaceBefore: z.number().min(0).max(8640).optional().describe('Points.'),
+  spaceAfter: z.number().min(0).max(8640).optional(),
+  leftIndent: z.number().min(0).max(8640).optional(),
+  rightIndent: z.number().min(0).max(8640).optional(),
+  firstLineIndent: z.number().min(-8640).max(8640).optional(),
   hyphenate: z.boolean().optional(),
   keepLinesTogether: z.boolean().optional(),
-  dropCapLines: z.number().int().min(0).optional(),
-  dropCapCharacters: z.number().int().min(0).optional(),
+  dropCapLines: z.number().int().min(0).max(25).optional(),
+  dropCapCharacters: z.number().int().min(0).max(150).optional(),
 };
 
 export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
@@ -246,10 +251,22 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
         name: z.string().optional().describe('Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0").'),
         color: z.string().optional().describe('"#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)".'),
         cmyk: z
-          .tuple([z.number(), z.number(), z.number(), z.number()])
+          .tuple([
+            z.number().min(0).max(100),
+            z.number().min(0).max(100),
+            z.number().min(0).max(100),
+            z.number().min(0).max(100),
+          ])
           .optional()
           .describe('Percentages 0-100.'),
-        rgb: z.tuple([z.number(), z.number(), z.number()]).optional(),
+        rgb: z
+          .tuple([
+            z.number().int().min(0).max(255),
+            z.number().int().min(0).max(255),
+            z.number().int().min(0).max(255),
+          ])
+          .optional()
+          .describe('Values 0-255.'),
         spot: z.boolean().optional(),
       }),
     },

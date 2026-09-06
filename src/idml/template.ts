@@ -4,8 +4,8 @@ import { IdmlDocument } from './document.ts';
 import { formatMatrix } from './geometry.ts';
 import { addPages, documentPreference, listPages, pageTransform, removePages } from './pages.ts';
 import blankTemplatePath from './template/blank.idml' with { type: 'file' };
-import { type LengthInput, resolvePageSize, toPoints, type Unit } from './units.ts';
-import { attr, children, firstChild, formatNumber, setAttrs } from './xml.ts';
+import { formatLength, type LengthInput, resolvePageSize, toPoints, type Unit } from './units.ts';
+import { attr, children, type Element, firstChild, formatNumber, setAttrs } from './xml.ts';
 
 export interface NewDocumentOptions {
   pageSize?: string;
@@ -136,12 +136,54 @@ export function applyMargins(
   }
   const targets = [...doc.spreads(), ...(pageRefs ? [] : doc.masterSpreads())];
   const pages = listPages(doc);
+  const affected: Element[] = [];
   for (const spread of targets) {
     for (const page of children(spread, 'Page')) {
       if (pageRefs) {
         const info = pages.find((p) => p.id === attr(page, 'Self'));
         if (!info || !pageRefs.includes(info.index)) continue;
       }
+      if (firstChild(page, 'MarginPreference')) affected.push(page);
+    }
+  }
+  // Check every page before changing anything: margins that do not leave room for text would
+  // give InDesign a column of negative width.
+  for (const page of affected) {
+    const pref = firstChild(page, 'MarginPreference')!;
+    const bounds = (attr(page, 'GeometricBounds') ?? '0 0 0 0').split(/\s+/).map(Number);
+    const pageWidth = (bounds[3] ?? 0) - (bounds[1] ?? 0);
+    const pageHeight = (bounds[2] ?? 0) - (bounds[0] ?? 0);
+    const margins = m ?? {
+      top: Number(attr(pref, 'Top') ?? 0),
+      bottom: Number(attr(pref, 'Bottom') ?? 0),
+      left: Number(attr(pref, 'Left') ?? 0),
+      right: Number(attr(pref, 'Right') ?? 0),
+    };
+    const inner = pageWidth - margins.left - margins.right;
+    const innerHeight = pageHeight - margins.top - margins.bottom;
+    const name = attr(page, 'Name') ?? '?';
+    if (inner <= 0 || innerHeight <= 0) {
+      throw new Error(
+        `Those margins leave no room on page ${name}: the page is ${formatLength(pageWidth, unit)} × ${formatLength(pageHeight, unit)} and the margins take ${formatLength(margins.left + margins.right, unit)} across and ${formatLength(margins.top + margins.bottom, unit)} down.`,
+      );
+    }
+    const count =
+      options.columns !== undefined
+        ? Math.max(1, Math.floor(options.columns))
+        : Number(attr(pref, 'ColumnCount') ?? 1);
+    const gutter =
+      options.gutter !== undefined
+        ? toPoints(options.gutter, unit)
+        : Number(attr(pref, 'ColumnGutter') ?? 12);
+    if (count > 1 && (inner - gutter * (count - 1)) / count <= 0) {
+      throw new Error(
+        `${count} columns with a ${formatLength(gutter, unit)} gutter do not fit in ${formatLength(inner, unit)} of text width on page ${name}. Use fewer columns or a smaller gutter.`,
+      );
+    }
+  }
+  for (const spread of targets) {
+    for (const page of children(spread, 'Page')) {
+      if (!affected.includes(page)) continue;
       const pref = firstChild(page, 'MarginPreference');
       if (!pref) continue;
       if (m) setAttrs(pref, { Top: m.top, Bottom: m.bottom, Left: m.left, Right: m.right });

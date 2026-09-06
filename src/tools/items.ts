@@ -38,6 +38,15 @@ import {
   removeElement,
   setAttrs,
 } from '../idml/xml.ts';
+import {
+  checkPlacement,
+  fitNotes,
+  pageBoxFor,
+  placementWarnings,
+  requireLine,
+  requirePositive,
+  withNotes,
+} from './checks.ts';
 import type { ToolContext } from './context.ts';
 import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
 
@@ -61,8 +70,8 @@ const appearance = {
   layer: z.string().optional().describe('Layer name (default: the active layer).'),
   fill: colorParam.optional(),
   stroke: colorParam.optional(),
-  strokeWeight: z.number().min(0).optional().describe('Stroke weight in points.'),
-  rotation: z.number().optional().describe('Rotation in degrees (counter-clockwise).'),
+  strokeWeight: z.number().min(0).max(1000).optional().describe('Stroke weight in points.'),
+  rotation: z.number().min(-360).max(360).optional().describe('Rotation in degrees (counter-clockwise).'),
 };
 
 function target(args: { page?: number | string; master?: string }): Target {
@@ -132,6 +141,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'text frame');
         const el = createTextFrame(doc, target(args), {
           rect: ctx.rect(args),
           text: args.text,
@@ -153,8 +163,11 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         ctx.save(doc);
         const s = describe(doc, el);
         return ok(
-          `Added text frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}${args.master ? ` on master ${args.master}` : ` on page ${args.page ?? 1}`}.`,
-          { item: s },
+          withNotes(
+            `Added text frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}${args.master ? ` on master ${args.master}` : ` on page ${args.page ?? 1}`}.`,
+            notes,
+          ),
+          { item: s, notes },
         );
       }),
   );
@@ -178,6 +191,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'rectangle');
         const el = createRectangle(doc, target(args), {
           rect: ctx.rect(args),
           name: args.name,
@@ -190,9 +204,13 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         if (args.cornerRadius !== undefined) setCornerRadius(el, ctx.pt(args.cornerRadius));
         ctx.save(doc);
         const s = describe(doc, el);
-        return ok(`Added rectangle${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`, {
-          item: s,
-        });
+        return ok(
+          withNotes(
+            `Added rectangle${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
+            notes,
+          ),
+          { item: s, notes },
+        );
       }),
   );
 
@@ -206,6 +224,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'ellipse');
         const el = createOval(doc, target(args), {
           rect: ctx.rect(args),
           name: args.name,
@@ -217,9 +236,13 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         });
         ctx.save(doc);
         const s = describe(doc, el);
-        return ok(`Added ellipse${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`, {
-          item: s,
-        });
+        return ok(
+          withNotes(
+            `Added ellipse${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
+            notes,
+          ),
+          { item: s, notes },
+        );
       }),
   );
 
@@ -238,16 +261,30 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         name: z.string().optional(),
         layer: z.string().optional(),
         stroke: colorParam.optional().describe('Default Black.'),
-        strokeWeight: z.number().min(0).optional().describe('Default 1pt.'),
+        strokeWeight: z.number().min(0).max(1000).optional().describe('Default 1pt.'),
         strokeType: z.string().optional().describe('solid, dashed, dotted, thick-thin, thin-thick, wavy'),
       }),
     },
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const from = { x: ctx.pt(args.x1), y: ctx.pt(args.y1) };
+        const to = { x: ctx.pt(args.x2), y: ctx.pt(args.y2) };
+        requireLine(ctx, from, to);
+        const notes = placementWarnings(
+          ctx,
+          {
+            x: Math.min(from.x, to.x),
+            y: Math.min(from.y, to.y),
+            width: Math.abs(to.x - from.x),
+            height: Math.abs(to.y - from.y),
+          },
+          pageBoxFor(doc, args),
+          'line',
+        );
         const el = createLine(doc, target(args), {
-          from: { x: ctx.pt(args.x1), y: ctx.pt(args.y1) },
-          to: { x: ctx.pt(args.x2), y: ctx.pt(args.y2) },
+          from,
+          to,
           name: args.name,
           layer: args.layer,
           stroke: args.stroke,
@@ -256,7 +293,10 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         if (args.strokeType) setStroke(doc, el, { type: args.strokeType });
         ctx.save(doc);
         const s = describe(doc, el);
-        return ok(`Added line${s.name ? ` "${s.name}"` : ''} [${s.id}].`, { item: s });
+        return ok(withNotes(`Added line${s.name ? ` "${s.name}"` : ''} [${s.id}].`, notes), {
+          item: s,
+          notes,
+        });
       }),
   );
 
@@ -313,8 +353,13 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
           });
         } else throw new Error('Give x/y, dx/dy or toPage');
         ctx.save(doc);
-        const s = describe(doc, findItem(doc, found.info.id).element);
-        return ok(`Moved ${s.type}${s.name ? ` "${s.name}"` : ''} to ${s.position}.`, { item: s });
+        const moved = findItem(doc, found.info.id);
+        const s = describe(doc, moved.element);
+        const notes = fitNotes(ctx, doc, moved.info);
+        return ok(withNotes(`Moved ${s.type}${s.name ? ` "${s.name}"` : ''} to ${s.position}.`, notes), {
+          item: s,
+          notes,
+        });
       }),
   );
 
@@ -335,10 +380,14 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       run(() => {
         const doc = ctx.open(args.document);
         const found = findItem(doc, args.item, args.page);
+        requirePositive(ctx, ctx.ptOpt(args.width), 'width');
+        requirePositive(ctx, ctx.ptOpt(args.height), 'height');
         resizeItem(found.element, ctx.ptOpt(args.width), ctx.ptOpt(args.height));
         ctx.save(doc);
-        const s = describe(doc, found.element);
-        return ok(`Resized to ${s.size}.`, { item: s });
+        const resized = findItem(doc, found.info.id);
+        const s = describe(doc, resized.element);
+        const notes = fitNotes(ctx, doc, resized.info);
+        return ok(withNotes(`Resized to ${s.size}.`, notes), { item: s, notes });
       }),
   );
 
@@ -351,7 +400,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
-        degrees: z.number(),
+        degrees: z.number().min(-360).max(360),
       }),
     },
     async (args) =>
@@ -477,9 +526,12 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         if (args.name) renameItem(clone, args.name);
         ctx.save(doc);
         const s = describe(doc, clone);
-        return ok(`Duplicated as ${s.type}${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}.`, {
-          item: s,
-        });
+        const copy = findItem(doc, attr(clone, 'Self')!);
+        const notes = fitNotes(ctx, doc, copy.info, 'the copy');
+        return ok(
+          withNotes(`Duplicated as ${s.type}${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}.`, notes),
+          { item: s, notes },
+        );
       }),
   );
 

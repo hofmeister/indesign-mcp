@@ -18,6 +18,7 @@ import {
   tableToText,
 } from '../idml/tables.ts';
 import type { Element } from '../idml/xml.ts';
+import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
 
@@ -75,6 +76,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const notes: string[] = [];
         let frame: Element;
         if (args.frame) {
           const found = findItem(doc, args.frame, args.page);
@@ -86,11 +88,13 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
           }
           const rows = args.rows ?? args.data?.length ?? 1;
           const height = args.height !== undefined ? ctx.pt(args.height) : rows * 20 + 8;
+          const rect = { x: ctx.pt(args.x), y: ctx.pt(args.y), width: ctx.pt(args.width), height };
+          notes.push(...checkPlacement(ctx, doc, rect, args, 'table frame'));
           frame = createTextFrame(
             doc,
             { page: args.page ?? 1 },
             {
-              rect: { x: ctx.pt(args.x), y: ctx.pt(args.y), width: ctx.pt(args.width), height },
+              rect,
               name: args.name,
               text: '',
             },
@@ -119,11 +123,15 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
         ctx.save(doc);
         const info = tableInfo(table);
         return ok(
-          `Added a ${info.rows} × ${info.columns} table${args.headerRows ? ` with ${args.headerRows} header row(s)` : ''} in frame "${frame.getAttribute('Name')}".`,
+          withNotes(
+            `Added a ${info.rows} × ${info.columns} table${args.headerRows ? ` with ${args.headerRows} header row(s)` : ''} in frame "${frame.getAttribute('Name')}".`,
+            notes,
+          ),
           {
             rows: info.rows,
             columns: info.columns,
             frame: frame.getAttribute('Name'),
+            notes,
           },
         );
       }),

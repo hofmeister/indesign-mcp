@@ -5,6 +5,7 @@ import { findItem } from '../idml/items.ts';
 import { listLayers } from '../idml/layers.ts';
 import { createFreePath, createPolygon, groupItems, stepAndRepeat, ungroupItems } from '../idml/shapes.ts';
 import { applyObjectStyle } from '../idml/styles.ts';
+import { checkPlacement, fitNotes, pageBoxFor, placementWarnings, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
 
@@ -54,6 +55,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, args.starInset ? 'star' : 'polygon');
         const el = createPolygon(doc, args.master ? { master: args.master } : { page: args.page ?? 1 }, {
           rect: ctx.rect(args),
           sides: args.sides,
@@ -68,8 +70,11 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
         ctx.save(doc);
         const s = describe(doc, el.getAttribute('Self')!);
         return ok(
-          `Added ${args.starInset ? 'star' : 'polygon'}${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
-          { item: s },
+          withNotes(
+            `Added ${args.starInset ? 'star' : 'polygon'}${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
+            notes,
+          ),
+          { item: s, notes },
         );
       }),
   );
@@ -95,8 +100,24 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
+        const points = args.points.map((p) => ({ x: ctx.pt(p.x), y: ctx.pt(p.y) }));
+        if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y)))
+          throw new Error('Every point needs a numeric x and y.');
+        const xs = points.map((p) => p.x);
+        const ys = points.map((p) => p.y);
+        const notes = placementWarnings(
+          ctx,
+          {
+            x: Math.min(...xs),
+            y: Math.min(...ys),
+            width: Math.max(...xs) - Math.min(...xs),
+            height: Math.max(...ys) - Math.min(...ys),
+          },
+          pageBoxFor(doc, args),
+          'path',
+        );
         const el = createFreePath(doc, args.master ? { master: args.master } : { page: args.page ?? 1 }, {
-          points: args.points.map((p) => ({ x: ctx.pt(p.x), y: ctx.pt(p.y) })),
+          points,
           open: !args.closed,
           smooth: args.smooth,
           name: args.name,
@@ -109,8 +130,11 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
         ctx.save(doc);
         const s = describe(doc, el.getAttribute('Self')!);
         return ok(
-          `Added path${s.name ? ` "${s.name}"` : ''} [${s.id}] with ${args.points.length} points, ${s.position}, ${s.size}.`,
-          { item: s },
+          withNotes(
+            `Added path${s.name ? ` "${s.name}"` : ''} [${s.id}] with ${args.points.length} points, ${s.position}, ${s.size}.`,
+            notes,
+          ),
+          { item: s, notes },
         );
       }),
   );
@@ -193,9 +217,15 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
           name: args.name,
         });
         ctx.save(doc);
-        return ok(`Created ${created.length} copies in a ${args.rows} × ${args.columns} grid.`, {
-          created: created.length,
-        });
+        // warn once if any copy landed off the page
+        const strays = created
+          .map((el) => findItem(doc, el.getAttribute('Self')!))
+          .flatMap((c) => fitNotes(ctx, doc, c.info, 'one of the copies'));
+        const notes = strays.length ? [strays[0]!] : [];
+        return ok(
+          withNotes(`Created ${created.length} copies in a ${args.rows} × ${args.columns} grid.`, notes),
+          { created: created.length, notes },
+        );
       }),
   );
 

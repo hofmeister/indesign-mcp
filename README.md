@@ -59,6 +59,7 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 
 - **Everything is saved immediately.** Each tool call writes the `.idml` file. Bare file names go to the documents folder (`~/Documents/InDesign MCP` by default).
 - **Measurements** default to millimetres from the top-left corner of the page; you can say `"0.5in"` or `"12pt"` anywhere.
+- **Mistakes are caught early.** Sizes that cannot work (a frame with no width, a line that is a point, a page bigger than InDesign allows, margins with no room left for text) are refused with an explanation, and anything that lands on the pasteboard or hangs over the trim edge comes back with a note saying so.
 - **Fonts are not embedded.** Claude tells you which fonts a document uses; they must be installed on the computer that opens it in InDesign. Previews substitute missing fonts with metric-compatible ones and say so.
 - **Pictures stay linked**, like in InDesign. Generated and edited pictures are saved in a `Links` folder next to the document.
 - **Exporting**: with InDesign installed, `export_document` lets InDesign make the PDF (press-ready, colour-managed). Without it the built-in exporter writes a vector PDF with the text as outlines — fine for proofs and web use, not for a printer.

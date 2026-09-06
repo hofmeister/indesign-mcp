@@ -10,6 +10,7 @@ import { formatLength } from '../idml/units.ts';
 import { mimeFor, probeImage, saveImage, slugify } from '../images/files.ts';
 import { type GeneratedImage, type ImageProvider, pickSize } from '../images/provider.ts';
 import { thumbnailBase64 } from '../images/thumbnail.ts';
+import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import { documentParam, itemParam, lengthParam, ok, pageParam, run, type ToolResult } from './shared.ts';
 
@@ -95,7 +96,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
         throw new Error(`"${args.frame}" is a text frame; pictures go into rectangles/ellipses`);
       const info = fillFrameWithImage(doc, found.element, { path: image, fit });
       if (args.name) found.element.setAttribute('Name', args.name);
-      return { id: found.info.id, info };
+      return { id: found.info.id, info, notes: [] as string[] };
     }
     if (args.x === undefined || args.y === undefined || args.width === undefined)
       throw new Error('Give x, y, width (and height) for a new frame, or frame to use an existing one');
@@ -103,17 +104,19 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
     const w = ctx.pt(args.width);
     const h = args.height !== undefined ? ctx.pt(args.height) : (w * probe.height) / probe.width;
     const target = args.master ? { master: args.master } : { page: args.page ?? 1 };
+    const rect = { x: ctx.pt(args.x), y: ctx.pt(args.y), width: w, height: h };
+    const notes = checkPlacement(ctx, doc, rect, args, 'picture frame');
     const { frame, info } = placeImage(
       doc,
       target,
       {
-        rect: { x: ctx.pt(args.x), y: ctx.pt(args.y), width: w, height: h },
+        rect,
         name: args.name,
         layer: args.layer,
       },
       { path: image, fit },
     );
-    return { id: frame.getAttribute('Self')!, info };
+    return { id: frame.getAttribute('Self')!, info, notes };
   }
 
   function previewContent(img: GeneratedImage, want: boolean | undefined): ToolResult['content'] {
@@ -147,12 +150,15 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       run(() => {
         const doc = ctx.open(args.document);
         const image = ctx.resolvePath(args.image, { mustExist: true });
-        const { id, info } = resolvePlacement(doc, args, image, args.fit);
+        const { id, info, notes } = resolvePlacement(doc, args, image, args.fit);
         ctx.save(doc);
         const s = summarize(doc, id);
         return ok(
-          `Placed ${basename(image)} (${info.width}×${info.height} px) in frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}. Effective resolution ≈ ${s.placed?.effectivePpi ?? '?'} ppi.`,
-          { item: s },
+          withNotes(
+            `Placed ${basename(image)} (${info.width}×${info.height} px) in frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}. Effective resolution ≈ ${s.placed?.effectivePpi ?? '?'} ppi.`,
+            notes,
+          ),
+          { item: s, notes },
         );
       }),
   );

@@ -595,16 +595,16 @@ Creates a paragraph style (font, size, leading, alignment, spacing, color…). A
 | `group` | string | Style group (folder) name. |
 | `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
-| `size` | number | Point size. |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
 | `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
-| `tracking` | number |  |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
 | `strikeThrough` | boolean |  |
 | `position` | `normal` \| `superscript` \| `subscript` |  |
-| `horizontalScale` | number |  |
-| `baselineShift` | number |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
 | `alignment` | `left` \| `center` \| `right` \| `justify` \| `justify-all` \| `justify-center` \| `justify-right` \| `to-binding` \| `away-from-binding` |  |
 | `spaceBefore` | number | Points. |
 | `spaceAfter` | number |  |
@@ -628,16 +628,16 @@ Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price
 | `group` | string |  |
 | `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
-| `size` | number | Point size. |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
 | `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
-| `tracking` | number |  |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
 | `strikeThrough` | boolean |  |
 | `position` | `normal` \| `superscript` \| `subscript` |  |
-| `horizontalScale` | number |  |
-| `baselineShift` | number |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
 
 ### `update_style`
 
@@ -652,16 +652,16 @@ Changes settings of an existing paragraph or character style. Everything using t
 | `nextStyle` | string |  |
 | `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
-| `size` | number | Point size. |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
 | `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
-| `tracking` | number |  |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
 | `strikeThrough` | boolean |  |
 | `position` | `normal` \| `superscript` \| `subscript` |  |
-| `horizontalScale` | number |  |
-| `baselineShift` | number |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
 | `alignment` | `left` \| `center` \| `right` \| `justify` \| `justify-all` \| `justify-center` \| `justify-right` \| `to-binding` \| `away-from-binding` |  |
 | `spaceBefore` | number | Points. |
 | `spaceAfter` | number |  |
@@ -702,7 +702,7 @@ Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for 
 | `name` | string | Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0"). |
 | `color` | string | "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". |
 | `cmyk` | array | Percentages 0-100. |
-| `rgb` | array |  |
+| `rgb` | array | Values 0-255. |
 | `spot` | boolean |  |
 
 ### `list_fonts`

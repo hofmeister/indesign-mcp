@@ -80,5 +80,19 @@ export function resolvePageSize(
     size = { width: size.height, height: size.width };
   if (orientation === 'portrait' && size.width > size.height)
     size = { width: size.height, height: size.width };
+  // InDesign's limits: a page is between 1 pt and 5486 mm on a side.
+  for (const [name, value] of [
+    ['width', size.width],
+    ['height', size.height],
+  ] as const) {
+    if (!Number.isFinite(value) || value <= 0)
+      throw new Error(
+        `The page ${name} has to be a positive size (got ${formatLength(value, defaultUnit)}).`,
+      );
+    if (value > 15552)
+      throw new Error(
+        `A page ${name} of ${formatLength(value, defaultUnit)} is larger than InDesign allows (${formatLength(15552, defaultUnit)}).`,
+      );
+  }
   return size;
 }
