@@ -51,7 +51,7 @@ Claude:  (creates the document, styles and swatches, lays out the frames, genera
 | Pictures | place existing files (PNG/JPEG/TIFF/PSD/PDF…), fit options, relink, embed / unembed, **generate images with OpenAI** (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1-mini`), **edit/combine images** with prompts and masks, resolution check |
 | References | list bundled and your own `.idml` files, describe them, start a new document from one, import styles/swatches/fonts, copy master pages or whole pages |
 | Production | preflight (overset text, low-resolution or missing pictures, missing fonts, RGB in print work, hairlines, missing bleed), package for a printer, data merge from CSV/JSON, export to PDF / PNG / JPEG |
-| Previews | render a page, a spread, one item, or a contact sheet of all pages to PNG. Uses **Adobe InDesign itself when it is installed** (pixel-exact), otherwise a built-in renderer with real fonts |
+| Previews | render a page, a spread, one item, or a contact sheet of all pages to PNG. Uses **Adobe InDesign itself when it is installed** (pixel-exact), otherwise a built-in renderer with real fonts, tables, bullets, drop caps, tab leaders, text wrap and anchored objects |
 
 The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompts (`design-from-brief`, `match-reference-look`, `review-layout`) appear as slash commands in Claude Desktop.
 

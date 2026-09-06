@@ -19,6 +19,7 @@ import { graphicChild, isPageItem, itemSpreadBounds, linkUri, linkUriToPath } fr
 import { layerElements } from '../idml/layers.ts';
 import { findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
 import { readStoryPlainText } from '../idml/stories.ts';
+import { parseCellName, tableInfo, tablesIn } from '../idml/tables.ts';
 import { attr, children, type Element, firstChild, getProperty, numAttr } from '../idml/xml.ts';
 import { rgbToCss, SwatchResolver } from './color.ts';
 import { fontCatalog } from './fonts.ts';
@@ -130,6 +131,7 @@ class RenderContext {
     let paraIndex = 0;
     for (const f of frames) {
       const geom = frameGeometry(f);
+      geom.exclusions = wrapExclusions(this.doc, f, geom);
       const composed = this.composer.compose(shaped.glyphs, shaped.paragraphs, geom, start, paraIndex);
       result.set(attr(f, 'Self')!, composed.lines);
       // advance: count paragraphs consumed
@@ -145,6 +147,68 @@ class RenderContext {
     }
     return result;
   }
+}
+
+const WRAP_MODES = new Set(['BoundingBoxTextWrap', 'Contour', 'JumpObjectTextWrap', 'NextColumnTextWrap']);
+
+/**
+ * Areas other objects keep clear of the text in this frame (InDesign's text wrap), in points
+ * relative to the top-left corner of the frame's text area. Rotated frames are approximated by
+ * their bounding boxes.
+ */
+function wrapExclusions(doc: IdmlDocument, frame: Element, geom: FrameGeometry): Rect[] {
+  let container: Element | undefined;
+  for (let node = frame.parentNode as Element | null; node; node = node.parentNode as Element | null) {
+    if (node.tagName === 'Spread' || node.tagName === 'MasterSpread') {
+      container = node;
+      break;
+    }
+  }
+  if (!container) return [];
+  const frameSpread = itemSpreadBounds(frame);
+  const local = anchorBounds(readPaths(frame));
+  if (!frameSpread) return [];
+  const dx = local.x - frameSpread.x;
+  const dy = local.y - frameSpread.y;
+  const out: Rect[] = [];
+  const visit = (el: Element) => {
+    if (!isPageItem(el)) return;
+    if (el !== frame) {
+      const pref = firstChild(el, 'TextWrapPreference');
+      const mode = pref ? attr(pref, 'TextWrapMode') : undefined;
+      if (pref && mode && WRAP_MODES.has(mode)) {
+        const bounds = itemSpreadBounds(el);
+        if (bounds) {
+          const offset = firstChild(firstChild(pref, 'Properties'), 'TextWrapOffset');
+          const top = offset ? numAttr(offset, 'Top', 0) : 0;
+          const left = offset ? numAttr(offset, 'Left', 0) : 0;
+          const bottom = offset ? numAttr(offset, 'Bottom', 0) : 0;
+          const right = offset ? numAttr(offset, 'Right', 0) : 0;
+          const side = attr(pref, 'TextWrapSide');
+          // relative to the frame's text area (inside the insets)
+          let x = bounds.x + dx - left - local.x - geom.inset.left;
+          let width = bounds.width + left + right;
+          if (side === 'LeftSide') {
+            // text only to the left of the object: block everything from it to the right edge
+            width = Math.max(width, geom.width - x);
+          } else if (side === 'RightSide') {
+            width += x + geom.width;
+            x = -geom.width;
+          }
+          out.push({
+            x,
+            y: bounds.y + dy - top - local.y - geom.inset.top,
+            width,
+            height: bounds.height + top + bottom,
+          });
+        }
+      }
+    }
+    if (el.tagName === 'Group') for (const c of children(el)) visit(c);
+  };
+  for (const el of children(container)) visit(el);
+  void doc;
+  return out;
 }
 
 function frameGeometry(frame: Element): FrameGeometry {
@@ -405,23 +469,57 @@ function glyphDefId(ctx: RenderContext, g: ShapedGlyph): string {
   return id;
 }
 
-function renderTextFrame(ctx: RenderContext, frame: Element, clipId: string): string {
-  const { lines, overset } = ctx.linesFor(frame);
-  const b = anchorBounds(readPaths(frame));
-  const geom = frameGeometry(frame);
-  const innerWidth = geom.width - geom.inset.left - geom.inset.right;
-  const colWidth = (innerWidth - geom.gutter * (geom.columns - 1)) / geom.columns;
-  const parts: string[] = [`<g clip-path="url(#${clipId})">`];
+/** Draws composed lines; (originX, originY) is the top-left of the first text column. */
+function renderLines(
+  ctx: RenderContext,
+  lines: Line[],
+  originX: number,
+  originY: number,
+  colWidth: number,
+  gutter: number,
+): string {
+  const parts: string[] = [];
   for (const line of lines) {
-    const colX = b.x + geom.inset.left + line.column * (colWidth + geom.gutter);
+    const colX = originX + line.column * (colWidth + gutter);
     let x = colX + line.x;
-    const y = b.y + geom.inset.top + line.baseline;
+    const y = originY + line.baseline;
     let currentFill = '';
     let run: string[] = [];
     const flush = () => {
       if (run.length) parts.push(`<g fill="${currentFill}">${run.join('')}</g>`);
       run = [];
     };
+    // drop cap
+    if (line.dropCap?.length) {
+      let dx = colX + (line.dropCapX ?? 0);
+      const dy = y + (line.dropCapBaseline ?? 0);
+      for (const g of line.dropCap) {
+        if (!g.isSpace && g.glyphId !== 0) {
+          const id = glyphDefId(ctx, g);
+          const ds = g.attrs.size / g.face.unitsPerEm;
+          const paint = ctx.swatches.resolve(g.attrs.fillColor, g.attrs.fillTint);
+          parts.push(
+            `<g fill="${paint.css ?? 'rgb(0,0,0)'}"><use href="#${id}" transform="matrix(${fmt(ds)} 0 0 ${fmt(-ds)} ${fmt(dx + g.xOffset)} ${fmt(dy)})"/></g>`,
+          );
+        }
+        dx += g.advance;
+      }
+    }
+    // bullet or number in front of a list paragraph
+    if (line.marker?.length) {
+      let mx = colX + (line.markerX ?? 0);
+      for (const g of line.marker) {
+        if (!g.isSpace && g.glyphId !== 0) {
+          const id = glyphDefId(ctx, g);
+          const ms = g.attrs.size / g.face.unitsPerEm;
+          const paint = ctx.swatches.resolve(g.attrs.fillColor, g.attrs.fillTint);
+          parts.push(
+            `<g fill="${paint.css ?? 'rgb(0,0,0)'}"><use href="#${id}" transform="matrix(${fmt(ms)} 0 0 ${fmt(-ms)} ${fmt(mx + g.xOffset)} ${fmt(y)})"/></g>`,
+          );
+        }
+        mx += g.advance;
+      }
+    }
     // paragraph rules
     if (line.ruleAbove)
       parts.push(
@@ -434,7 +532,30 @@ function renderTextFrame(ctx: RenderContext, frame: Element, clipId: string): st
         flush();
         currentFill = fill;
       }
-      if (!g.isSpace && g.glyphId !== 0) {
+      if (g.leader?.length) {
+        // a tab with a leader: repeat its characters across the gap, right-aligned to the stop
+        const total = g.leader.reduce((sum, l) => sum + l.advance, 0);
+        let lx = x + Math.max(0, g.advance - total);
+        for (const l of g.leader) {
+          if (!l.isSpace && l.glyphId !== 0) {
+            const id = glyphDefId(ctx, l);
+            const ls = l.attrs.size / l.face.unitsPerEm;
+            run.push(
+              `<use href="#${id}" transform="matrix(${fmt(ls)} 0 0 ${fmt(-ls)} ${fmt(lx)} ${fmt(y)})"/>`,
+            );
+          }
+          lx += l.advance;
+        }
+      }
+      if (g.anchored) {
+        // an anchored object: draw the item where the glyph would have been
+        flush();
+        const local = anchorBounds(readPaths(g.anchored));
+        const height = g.ascentOverride ?? local.height;
+        parts.push(
+          `<g transform="translate(${fmt(x - local.x)} ${fmt(y + g.yOffset - height - local.y)})">${renderItem(ctx, g.anchored, IDENTITY)}</g>`,
+        );
+      } else if (!g.isSpace && g.glyphId !== 0) {
         const id = glyphDefId(ctx, g);
         const sx = (g.attrs.size / g.face.unitsPerEm) * (g.attrs.horizontalScale / 100);
         const sy = (g.attrs.size / g.face.unitsPerEm) * (g.attrs.verticalScale / 100);
@@ -472,6 +593,218 @@ function renderTextFrame(ctx: RenderContext, frame: Element, clipId: string): st
     }
     flush();
   }
+  return parts.join('');
+}
+
+// ---- tables ---------------------------------------------------------------------------------
+
+interface CellBox {
+  cell: Element;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function cellInsets(cell: Element): { top: number; left: number; bottom: number; right: number } {
+  return {
+    top: numAttr(cell, 'TopInset', 4),
+    left: numAttr(cell, 'LeftInset', 4),
+    bottom: numAttr(cell, 'BottomInset', 4),
+    right: numAttr(cell, 'RightInset', 4),
+  };
+}
+
+function cellGeometry(cell: Element, width: number, height: number): FrameGeometry {
+  const inset = cellInsets(cell);
+  const vj = attr(cell, 'VerticalJustification') as FrameGeometry['verticalJustification'] | undefined;
+  return {
+    width,
+    height,
+    columns: 1,
+    gutter: 0,
+    inset,
+    verticalJustification: vj ?? 'TopAlign',
+    firstBaselineOffset: 'AscentOffset',
+    minFirstBaseline: 0,
+  };
+}
+
+/** How tall the cell's text needs the row to be. */
+function cellTextHeight(ctx: RenderContext, cell: Element, width: number): number {
+  const inset = cellInsets(cell);
+  const shaped = ctx.composer.shapeStory(ctx.doc, cell);
+  if (!shaped.glyphs.length) return inset.top + inset.bottom;
+  const composed = ctx.composer.compose(shaped.glyphs, shaped.paragraphs, cellGeometry(cell, width, 1e6));
+  const last = composed.lines.at(-1);
+  return inset.top + inset.bottom + (last ? last.baseline + last.descent : 0);
+}
+
+function edgeStroke(
+  ctx: RenderContext,
+  cell: Element,
+  side: 'Top' | 'Left' | 'Bottom' | 'Right',
+): { weight: number; css: string } | undefined {
+  const weight = numAttr(cell, `${side}EdgeStrokeWeight`, 0);
+  if (weight <= 0) return undefined;
+  const paint = ctx.swatches.resolve(attr(cell, `${side}EdgeStrokeColor`) ?? 'Color/Black');
+  if (paint.kind === 'none' || !paint.css) return undefined;
+  return { weight, css: paint.css };
+}
+
+/**
+ * Draws a table at (x0, y0). Column widths and row heights come from the table; rows grow when
+ * their text needs more room, as AutoGrow does in InDesign.
+ */
+function renderTable(
+  ctx: RenderContext,
+  table: Element,
+  x0: number,
+  y0: number,
+  maxWidth: number,
+): { svg: string; height: number } {
+  const info = tableInfo(table);
+  if (!info.rows || !info.columns) return { svg: '', height: 0 };
+  const widths =
+    info.columnWidths.length === info.columns
+      ? info.columnWidths.map((w) => (w > 0 ? w : maxWidth / info.columns))
+      : Array.from({ length: info.columns }, () => maxWidth / info.columns);
+  const heights = Array.from({ length: info.rows }, (_, r) => info.rowHeights[r] ?? 0);
+  const cells = children(table, 'Cell');
+  const positions = new Map<Element, { row: number; column: number; rowSpan: number; columnSpan: number }>();
+  for (const cell of cells) {
+    const pos = parseCellName(attr(cell, 'Name'));
+    if (!pos) continue;
+    positions.set(cell, {
+      ...pos,
+      rowSpan: Math.max(1, numAttr(cell, 'RowSpan', 1)),
+      columnSpan: Math.max(1, numAttr(cell, 'ColumnSpan', 1)),
+    });
+  }
+  // grow single-row cells to fit their text
+  for (const [cell, pos] of positions) {
+    if (pos.rowSpan !== 1) continue;
+    const width = widths.slice(pos.column, pos.column + pos.columnSpan).reduce((a, b) => a + b, 0);
+    const needed = cellTextHeight(ctx, cell, width);
+    if (needed > (heights[pos.row] ?? 0)) heights[pos.row] = needed;
+  }
+  const xAt = (c: number) => x0 + widths.slice(0, c).reduce((a, b) => a + b, 0);
+  const yAt = (r: number) => y0 + heights.slice(0, r).reduce((a, b) => a + b, 0);
+
+  const boxes: CellBox[] = [];
+  for (const [cell, pos] of positions) {
+    boxes.push({
+      cell,
+      x: xAt(pos.column),
+      y: yAt(pos.row),
+      width: widths.slice(pos.column, pos.column + pos.columnSpan).reduce((a, b) => a + b, 0),
+      height: heights.slice(pos.row, pos.row + pos.rowSpan).reduce((a, b) => a + b, 0),
+    });
+  }
+
+  const fills: string[] = [];
+  const texts: string[] = [];
+  const strokes: string[] = [];
+  for (const box of boxes) {
+    const fillPaint = ctx.swatches.resolve(
+      attr(box.cell, 'FillColor'),
+      box.cell.hasAttribute('FillTint') ? numAttr(box.cell, 'FillTint') : undefined,
+    );
+    if (fillPaint.kind === 'solid' && fillPaint.css)
+      fills.push(
+        `<rect x="${fmt(box.x)}" y="${fmt(box.y)}" width="${fmt(box.width)}" height="${fmt(box.height)}" fill="${fillPaint.css}"/>`,
+      );
+    const inset = cellInsets(box.cell);
+    const shaped = ctx.composer.shapeStory(ctx.doc, box.cell);
+    if (shaped.glyphs.length) {
+      const composed = ctx.composer.compose(
+        shaped.glyphs,
+        shaped.paragraphs,
+        cellGeometry(box.cell, box.width, box.height),
+      );
+      texts.push(
+        renderLines(
+          ctx,
+          composed.lines,
+          box.x + inset.left,
+          box.y + inset.top,
+          box.width - inset.left - inset.right,
+          0,
+        ),
+      );
+    }
+    const edges: [(typeof SIDES)[number], number, number, number, number][] = [
+      ['Top', box.x, box.y, box.x + box.width, box.y],
+      ['Bottom', box.x, box.y + box.height, box.x + box.width, box.y + box.height],
+      ['Left', box.x, box.y, box.x, box.y + box.height],
+      ['Right', box.x + box.width, box.y, box.x + box.width, box.y + box.height],
+    ];
+    for (const [side, x1, y1, x2, y2] of edges) {
+      const stroke = edgeStroke(ctx, box.cell, side);
+      if (!stroke) continue;
+      strokes.push(
+        `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="${stroke.css}" stroke-width="${fmt(stroke.weight)}" stroke-linecap="square"/>`,
+      );
+    }
+  }
+  // outer border
+  const totalWidth = widths.reduce((a, b) => a + b, 0);
+  const totalHeight = heights.reduce((a, b) => a + b, 0);
+  for (const side of SIDES) {
+    const weight = numAttr(table, `${side}BorderStrokeWeight`, 0);
+    if (weight <= 0) continue;
+    const paint = ctx.swatches.resolve(attr(table, `${side}BorderStrokeColor`) ?? 'Color/Black');
+    if (paint.kind === 'none' || !paint.css) continue;
+    const [x1, y1, x2, y2] =
+      side === 'Top'
+        ? [x0, y0, x0 + totalWidth, y0]
+        : side === 'Bottom'
+          ? [x0, y0 + totalHeight, x0 + totalWidth, y0 + totalHeight]
+          : side === 'Left'
+            ? [x0, y0, x0, y0 + totalHeight]
+            : [x0 + totalWidth, y0, x0 + totalWidth, y0 + totalHeight];
+    strokes.push(
+      `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="${paint.css}" stroke-width="${fmt(weight)}" stroke-linecap="square"/>`,
+    );
+  }
+  return { svg: [...fills, ...strokes, ...texts].join(''), height: totalHeight };
+}
+
+const SIDES = ['Top', 'Bottom', 'Left', 'Right'] as const;
+
+/** Tables of a text frame's story, drawn under the text that precedes them. */
+function renderTablesOf(
+  ctx: RenderContext,
+  frame: Element,
+  lines: Line[],
+  b: Rect,
+  geom: FrameGeometry,
+  innerWidth: number,
+): string {
+  const story = ctx.doc.story(attr(frame, 'ParentStory') ?? '');
+  if (!story) return '';
+  const tables = tablesIn(story);
+  if (!tables.length) return '';
+  const lastLine = lines.filter((l) => l.glyphs.length).at(-1);
+  let y = b.y + geom.inset.top + (lastLine ? lastLine.baseline + lastLine.descent : 0);
+  const parts: string[] = [];
+  for (const table of tables) {
+    const drawn = renderTable(ctx, table, b.x + geom.inset.left, y, innerWidth);
+    parts.push(drawn.svg);
+    y += drawn.height;
+  }
+  return parts.join('');
+}
+
+function renderTextFrame(ctx: RenderContext, frame: Element, clipId: string): string {
+  const { lines, overset } = ctx.linesFor(frame);
+  const b = anchorBounds(readPaths(frame));
+  const geom = frameGeometry(frame);
+  const innerWidth = geom.width - geom.inset.left - geom.inset.right;
+  const colWidth = (innerWidth - geom.gutter * (geom.columns - 1)) / geom.columns;
+  const parts: string[] = [`<g clip-path="url(#${clipId})">`];
+  parts.push(renderLines(ctx, lines, b.x + geom.inset.left, b.y + geom.inset.top, colWidth, geom.gutter));
+  parts.push(renderTablesOf(ctx, frame, lines, b, geom, innerWidth));
   parts.push('</g>');
   if (overset) {
     // InDesign's red overset marker at the out port (bottom right)

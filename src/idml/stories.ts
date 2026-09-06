@@ -22,6 +22,8 @@ export interface Run {
   attrs?: Record<string, string>;
   /** Typed properties such as AppliedFont (string) or Leading (unit). */
   props?: Record<string, { type: string; value: string }>;
+  /** An anchored page item sitting at this point in the text. */
+  anchored?: Element;
 }
 
 export interface Paragraph {
@@ -35,7 +37,10 @@ export const NO_PARAGRAPH_STYLE = 'ParagraphStyle/$ID/[No paragraph style]';
 export const BASIC_PARAGRAPH_STYLE = 'ParagraphStyle/$ID/NormalParagraphStyle';
 export const NO_CHARACTER_STYLE = 'CharacterStyle/$ID/[No character style]';
 
-/** Reads the paragraphs of a story (or XmlStory). Tables, notes and other inline objects are skipped. */
+/** Page items that can be anchored in text. */
+const ANCHORED_TAGS = ['Rectangle', 'Oval', 'Polygon', 'GraphicLine', 'TextFrame', 'Group', 'Button'];
+
+/** Reads the paragraphs of a story (or XmlStory). Tables and notes are skipped. */
 export function readStory(story: Element): Paragraph[] {
   const paragraphs: Paragraph[] = [];
   // `current` is the paragraph receiving content; null after a <Br/> until the next content arrives.
@@ -63,6 +68,7 @@ export function readStory(story: Element): Paragraph[] {
         const last = para.runs.at(-1);
         if (
           last &&
+          !last.anchored &&
           last.characterStyle === characterStyle &&
           sameRecord(last.attrs, attrs) &&
           sameProps(last.props, props)
@@ -86,6 +92,8 @@ export function readStory(story: Element): Paragraph[] {
           else if (c.tagName === 'Br') {
             ensure();
             current = null;
+          } else if (ANCHORED_TAGS.includes(c.tagName)) {
+            ensure().runs.push({ text: '', characterStyle, attrs, props, anchored: c });
           } else if (INLINE_WRAPPERS.includes(c.tagName)) walkRange(c);
           else if (c.tagName === 'XMLElement')
             for (const inner of children(c)) {

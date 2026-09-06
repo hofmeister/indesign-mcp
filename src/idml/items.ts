@@ -29,6 +29,7 @@ import {
 } from './pages.ts';
 import { createStory, readStoryPlainText } from './stories.ts';
 import {
+  allElements,
   attr,
   children,
   type Element,
@@ -276,6 +277,19 @@ export function findItem(doc: IdmlDocument, ref: string, page?: number | string)
   for (const part of doc.masterSpreadParts()) {
     const ms = children(doc.xml(part).documentElement, 'MasterSpread')[0];
     if (ms) scan(ms, part, attr(ms, 'Name') ?? 'master');
+  }
+  if (!matches.length) {
+    // items anchored in text live inside their story, not on the spread
+    for (const part of doc.storyParts()) {
+      const story = children(doc.xml(part).documentElement, 'Story')[0];
+      if (!story) continue;
+      for (const el of allElements(story)) {
+        if (!isPageItem(el)) continue;
+        const info = itemInfo(doc, el, pages, attr(story, 'Self') ?? '');
+        if (info.id === ref || (info.name ?? '').toLowerCase() === ref.toLowerCase())
+          matches.push({ element: el, info, container: story, containerPart: part });
+      }
+    }
   }
   if (!matches.length) {
     throw new Error(
