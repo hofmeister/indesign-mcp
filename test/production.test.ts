@@ -427,7 +427,7 @@ describe('production tools over MCP', () => {
       name: 'Cover',
     });
 
-    const links = await call('list_links', { document });
+    const links = await call('list', { what: 'links', document });
     expect(links.isError).toBe(false);
     expect(links.text).toContain('default.jpg');
 
@@ -475,14 +475,14 @@ describe('production tools over MCP', () => {
     const csv = join(dir, 'team.csv');
     writeFileSync(csv, 'Name,Role\nAda,Engineer\nGrace,Admiral\nAlan,Cryptanalyst\n');
 
-    const fields = await call('list_merge_fields', { document });
+    const fields = await call('list', { what: 'merge_fields', document });
     expect(fields.text).toContain('<<Name>>');
 
     const merged = await call('data_merge', { document, dataFile: csv });
     expect(merged.isError).toBe(false);
     expect(merged.data!.records).toBe(3);
 
-    const pages = await call('list_pages', { document });
+    const pages = await call('list', { what: 'pages', document });
     expect((pages.data!.pages as unknown[]).length).toBe(3);
     const described = await call('describe_document', { document });
     expect(described.text).toContain('Grace');

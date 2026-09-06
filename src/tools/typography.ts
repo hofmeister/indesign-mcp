@@ -168,8 +168,8 @@ export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): vo
       }),
   );
 
-  reg.tool(
-    'list_hyperlinks',
+  reg.listing(
+    'hyperlinks',
     {
       title: 'List hyperlinks',
       description: 'Lists the hyperlinks in the document with their targets.',
@@ -329,8 +329,8 @@ export function registerVariableTools(reg: ToolRegistry, ctx: ToolContext): void
       }),
   );
 
-  reg.tool(
-    'list_text_variables',
+  reg.listing(
+    'text_variables',
     {
       title: 'List text variables',
       description: "Lists the document's text variables and what each one shows.",
@@ -358,7 +358,7 @@ export function registerVariableTools(reg: ToolRegistry, ctx: ToolContext): void
         document: documentParam,
         item: itemParam.describe('The text frame.'),
         page: pageParam.optional(),
-        variable: z.string().describe('Name of the variable (see list_text_variables).'),
+        variable: z.string().describe('Name of the variable (see list text_variables).'),
         replaceText: z.string().optional().describe('Text to replace with the variable.'),
         characterStyle: z.string().optional(),
       }),

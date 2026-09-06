@@ -191,7 +191,7 @@ describe('image tools', () => {
     expect((provider.calls.at(-1) as EditRequest).images.length).toBe(1);
     r = await call('set_image_fit', { document: doc, frame: 'Bike', fit: 'fit' });
     expect(r.isError).toBe(false);
-    r = await call('list_images', { document: doc });
+    r = await call('list', { what: 'images', document: doc });
     expect(r.data!.images).toHaveLength(2);
     const reopened = IdmlDocument.load(doc);
     expect(listItems(reopened).filter((i) => i.type === 'image')).toHaveLength(2);

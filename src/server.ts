@@ -11,6 +11,7 @@ import { ToolContext } from './tools/context.ts';
 import { registerDocumentTools } from './tools/document.ts';
 import { registerImageTools } from './tools/images.ts';
 import { registerItemTools } from './tools/items.ts';
+import { registerListTool } from './tools/list.ts';
 import { registerPageOpsTools, registerPageTools } from './tools/pages.ts';
 import { registerPreviewTools } from './tools/preview.ts';
 import { registerProductionTools } from './tools/production.ts';
@@ -31,7 +32,7 @@ How to work:
 3. Positions are measured from the top-left corner of the page in millimetres unless another unit is given ("10mm", "0.5in", "12pt"); width and height are sizes, not coordinates. Give items names ("Headline", "Hero image") so you can edit them later. Tools refuse impossible input (a frame with no width, a line with two identical ends, margins that leave no room) and add a "Note:" when something lands on the pasteboard or hangs over the trim — read those notes and fix the placement unless the user wanted a bleed.
 4. Every edit is saved to the .idml file immediately. Run validate_document when you are done, and tell the user where the file is.
 5. Fonts are not embedded: prefer fonts the user has installed, and mention which fonts you used.
-6. References: list_reference_documents shows InDesign documents you can learn from; prefer new_document_from_reference or import_styles_from_reference over inventing styles from scratch.
+6. References: list reference_documents shows InDesign documents you can learn from; prefer new_document_from_reference or import_styles_from_reference over inventing styles from scratch.
 7. Previews: call preview_page after visible changes and look at the image before reporting back; it saves a PNG next to the document too.
 8. Pictures: place_image links existing files; generate_image / edit_image create pictures with OpenAI (costs money, confirm before generating many) and save them in a Links folder next to the document.
 9. Finishing a job: run preflight_document before handing anything over and fix what it reports; package_document collects the document with its pictures for a printer or client; export_document makes a PDF, PNG or JPEG.
@@ -96,6 +97,7 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
   registerReferenceTools(reg, ctx, catalog);
   registerPreviewTools(reg, ctx);
   registerProductionTools(reg, ctx);
+  registerListTool(reg);
   registerBatchTool(reg, ctx);
   registerPrompts(server);
   return server;

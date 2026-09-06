@@ -479,7 +479,7 @@ describe('table and typography tools over MCP', () => {
       url: 'https://example.com/order',
     });
     expect(link.isError).toBe(false);
-    expect((await call('list_hyperlinks', { document: doc })).data!.links).toHaveLength(1);
+    expect((await call('list', { what: 'hyperlinks', document: doc })).data!.links).toHaveLength(1);
 
     expect(
       (await call('set_page_numbering', { document: doc, startPage: 1, style: 'lower-roman' })).text,

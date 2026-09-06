@@ -22,8 +22,8 @@ const fitParam = z
   .describe('How the picture sits in its frame; fill (default) crops to fill it.');
 
 export function registerProductionTools(reg: ToolRegistry, ctx: ToolContext): void {
-  reg.tool(
-    'list_links',
+  reg.listing(
+    'links',
     {
       title: 'List placed images',
       description:
@@ -53,7 +53,7 @@ export function registerProductionTools(reg: ToolRegistry, ctx: ToolContext): vo
         document: documentParam,
         image: z
           .string()
-          .describe('Which picture: the frame name or id, or the current file name (see list_links).'),
+          .describe('Which picture: the frame name or id, or the current file name (see list links).'),
         newFile: z.string().describe('Path of the image file to link to.'),
         fit: fitParam.optional(),
       }),
@@ -222,8 +222,8 @@ export function registerProductionTools(reg: ToolRegistry, ctx: ToolContext): vo
       }),
   );
 
-  reg.tool(
-    'list_merge_fields',
+  reg.listing(
+    'merge_fields',
     {
       title: 'List data-merge placeholders',
       description:

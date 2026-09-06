@@ -60,7 +60,7 @@ describe('numbers sent as strings', () => {
     const document = docPath('named');
     await call(client, 'new_document', { path: document, pageSize: 'A4' });
     expect((await call(client, 'create_paragraph_style', { document, name: '41' })).isError).toBeFalsy();
-    const listed = await call(client, 'list_styles', { document, kind: 'paragraph' });
+    const listed = await call(client, 'list', { what: 'styles', document, kind: 'paragraph' });
     expect(listed.content[0]?.text).toContain('41');
   });
 });
@@ -120,7 +120,7 @@ describe('page number markers', () => {
     });
     await call(client, 'insert_page_number', { document, item: 'footer' });
 
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect(items.isError).toBeFalsy();
 
     const { readFileSync } = await import('node:fs');
@@ -178,7 +178,8 @@ describe('preflight colour noise', () => {
     await call(client, 'new_document', { path: document, pageSize: 'A4' });
     await call(client, 'create_swatch', { document, name: 'Unused CMYK', color: 'cmyk(0,100,0,0)' });
     await call(client, 'create_swatch', { document, name: 'Used CMYK', color: 'cmyk(100,0,0,0)' });
-    await call(client, 'add_rectangle', {
+    await call(client, 'add_shape', {
+      shape: 'rectangle',
       document,
       page: 1,
       x: 10,
@@ -270,7 +271,8 @@ describe('named inline colours', () => {
     const document = docPath('colour');
     await call(client, 'new_document', { path: document, pageSize: 'A4' });
     for (const y of [10, 80])
-      await call(client, 'add_rectangle', {
+      await call(client, 'add_shape', {
+        shape: 'rectangle',
         document,
         page: 1,
         x: 10,
@@ -280,7 +282,7 @@ describe('named inline colours', () => {
         fill: '#14342b as Brand Green',
       });
 
-    const swatches = await call(client, 'list_swatches', { document });
+    const swatches = await call(client, 'list', { what: 'swatches', document });
     const text = swatches.content[0]?.text ?? '';
     expect(text).toContain('Brand Green');
     // The auto-generated name must not appear alongside it, and the second use must not have
@@ -325,6 +327,14 @@ describe('tool descriptions', () => {
     const { tools } = await client.listTools();
     const names = new Set(tools.map((t) => t.name));
     expect(names.size).toBeGreaterThan(50);
+    // The subjects `list` accepts are not tools, but read like tool names.
+    const listSubjects = new Set(
+      (
+        tools.find((t) => t.name === 'list')?.inputSchema as
+          | { properties?: { what?: { enum?: string[] } } }
+          | undefined
+      )?.properties?.what?.enum ?? [],
+    );
 
     const missing: string[] = [];
     for (const tool of tools) {
@@ -332,7 +342,7 @@ describe('tool descriptions', () => {
       // Tool names are snake_case; only check words that look like a reference to one.
       for (const m of text.matchAll(/`?\b([a-z]+(?:_[a-z]+){1,3})\b`?/g)) {
         const word = m[1]!;
-        if (names.has(word)) continue;
+        if (names.has(word) || listSubjects.has(word)) continue;
         if (
           !/^(add|create|set|get|list|new|open|apply|insert|delete|remove|move|export|preview|describe|validate|preflight|package|place|edit|update|find|format|import|copy|duplicate|resize|rotate|group|ungroup|thread|anchor|override|relink|embed|unembed|step|style|merge|reorder|rename|arrange|align|fit|data)_/.test(
             word,

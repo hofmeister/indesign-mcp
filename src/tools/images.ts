@@ -356,8 +356,8 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
       }),
   );
 
-  reg.tool(
-    'list_images',
+  reg.listing(
+    'images',
     {
       title: 'List placed images',
       description:

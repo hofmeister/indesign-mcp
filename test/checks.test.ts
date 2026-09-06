@@ -105,19 +105,20 @@ describe('the tools refuse impossible input', () => {
   });
 
   test('a negative width is refused', async () => {
-    const r = await call('add_rectangle', { document, x: 20, y: 20, width: -50, height: 40 });
+    const r = await call('add_shape', { shape: 'rectangle', document, x: 20, y: 20, width: -50, height: 40 });
     expect(r.isError).toBe(true);
     expect(r.text).toContain('positive width and height');
   });
 
   test('a line with two identical ends is refused', async () => {
-    const r = await call('add_line', { document, x1: 10, y1: 10, x2: 10, y2: 10 });
+    const r = await call('add_shape', { shape: 'line', document, x1: 10, y1: 10, x2: 10, y2: 10 });
     expect(r.isError).toBe(true);
     expect(r.text).toContain('two different points');
   });
 
   test('an item placed off the page is created, with a warning', async () => {
-    const r = await call('add_rectangle', {
+    const r = await call('add_shape', {
+      shape: 'rectangle',
       document,
       x: 500,
       y: 20,
@@ -132,7 +133,8 @@ describe('the tools refuse impossible input', () => {
   });
 
   test('an item over the trim edge is created, with a bleed note', async () => {
-    const r = await call('add_rectangle', {
+    const r = await call('add_shape', {
+      shape: 'rectangle',
       document,
       x: 120,
       y: 20,
@@ -146,7 +148,15 @@ describe('the tools refuse impossible input', () => {
   });
 
   test('moving or resizing an item off the page warns too', async () => {
-    await call('add_rectangle', { document, x: 20, y: 20, width: 50, height: 40, name: 'Mover' });
+    await call('add_shape', {
+      shape: 'rectangle',
+      document,
+      x: 20,
+      y: 20,
+      width: 50,
+      height: 40,
+      name: 'Mover',
+    });
     const moved = await call('move_item', { document, item: 'Mover', x: 400, y: 20 });
     expect(moved.isError).toBe(false);
     expect(moved.text).toContain('pasteboard');
@@ -207,7 +217,7 @@ describe('the tools refuse impossible input', () => {
     expect(r.isError).toBe(true);
     expect(r.text).toContain('leave no room');
     // and the document is still usable afterwards
-    const pages = await call('list_pages', { document });
+    const pages = await call('list', { what: 'pages', document });
     expect(pages.isError).toBe(false);
   });
 });
@@ -232,7 +242,15 @@ describe('copies are checked too', () => {
     client = new Client({ name: 't', version: '0' });
     await client.connect(ct);
     document = (await call('new_document', { path: 'copies', pageSize: 'A5' })).data!.path as string;
-    await call('add_rectangle', { document, x: 20, y: 20, width: 40, height: 30, name: 'Tile' });
+    await call('add_shape', {
+      shape: 'rectangle',
+      document,
+      x: 20,
+      y: 20,
+      width: 40,
+      height: 30,
+      name: 'Tile',
+    });
   });
 
   test('a duplicate pushed off the page is reported', async () => {

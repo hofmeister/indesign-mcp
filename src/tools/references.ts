@@ -23,8 +23,8 @@ function reportText(r: ImportReport): string {
 
 export function registerReferenceTools(reg: ToolRegistry, ctx: ToolContext, catalog: ReferenceCatalog): void {
   const server = reg.server;
-  reg.tool(
-    'list_reference_documents',
+  reg.listing(
+    'reference_documents',
     {
       title: 'List reference documents',
       description:
@@ -68,7 +68,7 @@ export function registerReferenceTools(reg: ToolRegistry, ctx: ToolContext, cata
       inputSchema: toolInput({
         reference: z
           .string()
-          .describe('Reference name (from list_reference_documents) or a path to an .idml file.'),
+          .describe('Reference name (from list reference_documents) or a path to an .idml file.'),
       }),
       annotations: { readOnlyHint: true },
     },

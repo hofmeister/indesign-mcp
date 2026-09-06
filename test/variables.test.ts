@@ -191,7 +191,7 @@ describe('variable and nested style tools over MCP', () => {
       format: 'd MMMM yyyy',
     });
 
-    const listed = await call('list_text_variables', { document });
+    const listed = await call('list', { what: 'text_variables', document });
     expect(listed.text).toContain('Running head');
     expect(listed.text).toContain('Printed');
 

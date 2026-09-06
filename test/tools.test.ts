@@ -40,7 +40,7 @@ describe('tools end to end', () => {
       'new_document',
       'describe_document',
       'add_text_frame',
-      'add_rectangle',
+      'add_shape',
       'set_text',
       'create_paragraph_style',
       'create_swatch',
@@ -90,7 +90,8 @@ describe('tools end to end', () => {
     });
     expect(r.isError).toBe(false);
     expect(r.text).toContain('Headline');
-    r = await call('add_rectangle', {
+    r = await call('add_shape', {
+      shape: 'rectangle',
       document: path,
       page: 1,
       x: 10,

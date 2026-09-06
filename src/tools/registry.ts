@@ -25,8 +25,16 @@ export interface RegisteredOperation {
   readOnly: boolean;
 }
 
+export interface RegisteredListing {
+  what: string;
+  description: string;
+  schema: z.ZodType | undefined;
+  run: AnyHandler;
+}
+
 export class ToolRegistry {
   private operations = new Map<string, RegisteredOperation>();
+  private listings = new Map<string, RegisteredListing>();
 
   /** The underlying server, for the few registrations that are not tools (resources). */
   constructor(readonly server: McpServer) {}
@@ -43,6 +51,35 @@ export class ToolRegistry {
       run: handler as AnyHandler,
       readOnly: config.annotations?.readOnlyHint === true,
     });
+  }
+
+  /**
+   * A read-only listing, exposed as one `list` tool rather than thirteen `list_*` tools.
+   * The handler and its schema stay in the module that owns the subject.
+   */
+  listing<T extends z.ZodType>(
+    what: string,
+    config: ToolConfig<T>,
+    handler: (args: z.infer<T>) => ToolResult | Promise<ToolResult>,
+  ): void {
+    this.listings.set(what, {
+      what,
+      description: config.description ?? config.title ?? what,
+      schema: config.inputSchema,
+      run: handler as AnyHandler,
+    });
+  }
+
+  listingNames(): string[] {
+    return [...this.listings.keys()];
+  }
+
+  listingsFor(): RegisteredListing[] {
+    return [...this.listings.values()];
+  }
+
+  listingFor(what: string): RegisteredListing | undefined {
+    return this.listings.get(what);
   }
 
   operation(name: string): RegisteredOperation | undefined {

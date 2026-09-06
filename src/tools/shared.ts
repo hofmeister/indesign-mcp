@@ -20,7 +20,7 @@ export const pageParam = z
   .union([z.number().int().positive(), z.string()])
   .describe('Page number (1 = first page) or the page name shown in InDesign.');
 
-export const itemParam = z.string().describe("The item's name or id (see describe_document / list_items).");
+export const itemParam = z.string().describe("The item's name or id (see describe_document / list items).");
 
 export const colorParam = z
   .string()

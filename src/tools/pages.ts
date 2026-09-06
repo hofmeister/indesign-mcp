@@ -19,8 +19,8 @@ import type { ToolContext } from './context.ts';
 import type { ToolRegistry } from './registry.ts';
 import { documentParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
 export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
-  reg.tool(
-    'list_pages',
+  reg.listing(
+    'pages',
     {
       title: 'List pages',
       description: 'Lists the pages with size, side (left/right), margins, columns and applied master page.',
@@ -207,8 +207,8 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'list_masters',
+  reg.listing(
+    'masters',
     {
       title: 'List master pages',
       description: 'Lists master pages (parent pages) with the number of items on each.',
@@ -371,8 +371,8 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'list_layers',
+  reg.listing(
+    'layers',
     {
       title: 'List layers',
       description: 'Lists layers (top-most first).',

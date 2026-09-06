@@ -29,7 +29,7 @@ Format: ${format ?? 'A4 portrait, one page'}
 Save as: ${file ?? 'a sensible file name'}
 
 Work like an InDesign layout designer:
-1. Check list_reference_documents; if a reference fits, start from it (new_document_from_reference) or import its styles/swatches.
+1. Check list reference_documents; if a reference fits, start from it (new_document_from_reference) or import its styles/swatches.
 2. Otherwise new_document with proper margins and bleed. Create a small set of paragraph styles (headline, subhead, body, caption) and 2–3 swatches before placing text.
 3. Lay out text frames on a grid, give every item a name, use generate_image for pictures where the brief needs them (ask me before generating more than two).
 4. Run validate_document at the end and tell me where the file is, which fonts you used and what I should check in InDesign.`,
@@ -82,7 +82,7 @@ Finish with validate_document and a short summary of what you built.`,
           role: 'user' as const,
           content: {
             type: 'text' as const,
-            text: `Review the InDesign document at ${document}. Use describe_document and preview_page (if available) for every page, then give me concrete feedback as a senior layout designer would: hierarchy, alignment to the margins/grid, spacing consistency, typography (styles, sizes, leading), color use, image resolution (list_images), and anything InDesign would flag (validate_document). Offer to apply the fixes.`,
+            text: `Review the InDesign document at ${document}. Use describe_document and preview_page (if available) for every page, then give me concrete feedback as a senior layout designer would: hierarchy, alignment to the margins/grid, spacing consistency, typography (styles, sizes, leading), color use, image resolution (list images), and anything InDesign would flag (validate_document). Offer to apply the fixes.`,
           },
         },
       ],

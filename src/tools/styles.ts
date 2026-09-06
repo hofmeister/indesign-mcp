@@ -67,8 +67,8 @@ const paragraphFields = {
 };
 
 export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
-  reg.tool(
-    'list_styles',
+  reg.listing(
+    'styles',
     {
       title: 'List styles',
       description: 'Lists paragraph, character and object styles with their main settings.',
@@ -218,8 +218,8 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'list_swatches',
+  reg.listing(
+    'swatches',
     {
       title: 'List swatches',
       description: 'Lists color swatches with their values and an approximate hex color.',
@@ -287,8 +287,8 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'list_fonts',
+  reg.listing(
+    'fonts',
     {
       title: 'List fonts',
       description:

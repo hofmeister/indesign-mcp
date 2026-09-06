@@ -98,7 +98,7 @@ describe('reference tools', () => {
   });
 
   test('list, describe, new from reference, import, copy', async () => {
-    let r = await call('list_reference_documents', {});
+    let r = await call('list', { what: 'reference_documents' });
     expect(r.text).toContain('magazine-interview');
     expect(r.text).toContain('4-pages');
     r = await call('describe_reference', { reference: 'magazine-interview' });

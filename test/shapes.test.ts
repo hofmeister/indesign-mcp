@@ -349,7 +349,8 @@ describe('new tools over MCP', () => {
     ).toBe(false);
     expect(
       (
-        await call('add_rectangle', {
+        await call('add_shape', {
+          shape: 'rectangle',
           document: doc,
           page: 1,
           x: 0,
@@ -363,7 +364,8 @@ describe('new tools over MCP', () => {
     ).toBe(false);
     expect(
       (
-        await call('add_polygon', {
+        await call('add_shape', {
+          shape: 'polygon',
           document: doc,
           page: 1,
           x: 20,
@@ -379,7 +381,8 @@ describe('new tools over MCP', () => {
     ).toBe(false);
     expect(
       (
-        await call('add_path', {
+        await call('add_shape', {
+          shape: 'path',
           document: doc,
           page: 1,
           points: [
@@ -408,7 +411,8 @@ describe('new tools over MCP', () => {
     ).toBe(false);
     expect(
       (
-        await call('add_rectangle', {
+        await call('add_shape', {
+          shape: 'rectangle',
           document: doc,
           page: 1,
           x: 20,

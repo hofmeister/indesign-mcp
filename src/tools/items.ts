@@ -26,7 +26,9 @@ import {
 } from '../idml/items.ts';
 import { findLayer, listLayers } from '../idml/layers.ts';
 import { findPage, listPages } from '../idml/pages.ts';
+import { createFreePath, createPolygon } from '../idml/shapes.ts';
 import { styleSelf } from '../idml/styles.ts';
+import type { LengthInput } from '../idml/units.ts';
 import {
   attr,
   children,
@@ -84,6 +86,34 @@ const appearance = {
   rotation: z.number().min(-360).max(360).optional().describe('Rotation in degrees (counter-clockwise).'),
 };
 
+interface ShapeArgs {
+  document: string;
+  shape: 'rectangle' | 'ellipse' | 'line' | 'polygon' | 'path';
+  page?: number | string;
+  master?: string;
+  x?: LengthInput;
+  y?: LengthInput;
+  width?: LengthInput;
+  height?: LengthInput;
+  x1?: LengthInput;
+  y1?: LengthInput;
+  x2?: LengthInput;
+  y2?: LengthInput;
+  points?: { x: LengthInput; y: LengthInput }[];
+  closed?: boolean;
+  smooth?: boolean;
+  sides?: number;
+  starInset?: number;
+  cornerRadius?: LengthInput;
+  strokeType?: string;
+  name?: string;
+  layer?: string;
+  fill?: string;
+  stroke?: string;
+  strokeWeight?: number;
+  rotation?: number;
+}
+
 function target(args: { page?: number | string; master?: string }): Target {
   return args.master ? { master: args.master } : { page: args.page ?? 1 };
 }
@@ -95,8 +125,8 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
     return itemSummary(found.info, ctx.unit, layers);
   };
 
-  reg.tool(
-    'list_items',
+  reg.listing(
+    'items',
     {
       title: 'List items',
       description:
@@ -190,132 +220,176 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  const shapeSchema = z.object({
-    document: documentParam,
-    ...targetParams,
-    ...placement,
-    ...appearance,
-    cornerRadius: lengthParam.optional().describe('Rounded corners (rectangles only).'),
-  });
+  /**
+   * The five shapes behind `add_shape`. They share a target, an appearance and a placement check;
+   * only the geometry differs, which is why they are one tool rather than five.
+   */
+  const addShape = (args: ShapeArgs) => {
+    const doc = ctx.open(args.document);
+    const where = target(args);
+    const common = {
+      name: args.name,
+      layer: args.layer,
+      stroke: args.stroke,
+      strokeWeight: args.strokeWeight,
+      rotation: args.rotation,
+    };
+
+    const needBox = (): { x: number; y: number; width: number; height: number } => {
+      for (const k of ['x', 'y', 'width', 'height'] as const)
+        if (args[k] === undefined) throw new Error(`A ${args.shape} needs x, y, width and height.`);
+      return ctx.rect(args as { x: LengthInput; y: LengthInput; width: LengthInput; height: LengthInput });
+    };
+
+    if (args.shape === 'line') {
+      for (const k of ['x1', 'y1', 'x2', 'y2'] as const)
+        if (args[k] === undefined) throw new Error('A line needs x1, y1, x2 and y2.');
+      const from = { x: ctx.pt(args.x1!), y: ctx.pt(args.y1!) };
+      const to = { x: ctx.pt(args.x2!), y: ctx.pt(args.y2!) };
+      requireLine(ctx, from, to);
+      const box = {
+        x: Math.min(from.x, to.x),
+        y: Math.min(from.y, to.y),
+        width: Math.abs(to.x - from.x),
+        height: Math.abs(to.y - from.y),
+      };
+      const notes = placementWarnings(ctx, box, pageBoxFor(doc, args), 'line');
+      const el = createLine(doc, where, {
+        from,
+        to,
+        ...common,
+        stroke: args.stroke ?? 'Black',
+        strokeWeight: args.strokeWeight ?? 1,
+      });
+      if (args.strokeType) setStroke(doc, el, { type: args.strokeType });
+      ctx.save(doc);
+      const s2 = describe(doc, el);
+      return ok(
+        withNotes(
+          `Added line${s2.name ? ` "${s2.name}"` : ''} [${s2.id}] ${s2.position}, ${s2.size}.`,
+          notes,
+        ),
+        {
+          item: s2,
+          notes,
+        },
+      );
+    }
+
+    if (args.shape === 'path') {
+      if (!args.points?.length) throw new Error('A path needs at least two points.');
+      const points = args.points.map((pt) => ({ x: ctx.pt(pt.x), y: ctx.pt(pt.y) }));
+      if (points.some((pt) => !Number.isFinite(pt.x) || !Number.isFinite(pt.y)))
+        throw new Error('Every point needs a numeric x and y.');
+      const xs = points.map((pt) => pt.x);
+      const ys = points.map((pt) => pt.y);
+      const notes = placementWarnings(
+        ctx,
+        {
+          x: Math.min(...xs),
+          y: Math.min(...ys),
+          width: Math.max(...xs) - Math.min(...xs),
+          height: Math.max(...ys) - Math.min(...ys),
+        },
+        pageBoxFor(doc, args),
+        'path',
+      );
+      const el = createFreePath(doc, where, {
+        points,
+        open: !args.closed,
+        smooth: args.smooth,
+        ...common,
+        fill: args.fill ?? (args.closed ? 'Black' : 'none'),
+        stroke: args.stroke ?? (args.closed ? undefined : 'Black'),
+        strokeWeight: args.strokeWeight ?? (args.closed ? undefined : 1),
+      });
+      ctx.save(doc);
+      const s2 = describe(doc, el);
+      return ok(
+        withNotes(
+          `Added path${s2.name ? ` "${s2.name}"` : ''} [${s2.id}] with ${points.length} points, ${s2.position}, ${s2.size}.`,
+          notes,
+        ),
+        { item: s2, notes },
+      );
+    }
+
+    const rect = needBox();
+    const kind = args.shape === 'polygon' && args.starInset ? 'star' : args.shape;
+    const notes = checkPlacement(ctx, doc, rect, args, kind);
+    let el: Element;
+    if (args.shape === 'rectangle') {
+      el = createRectangle(doc, where, { rect, ...common, fill: args.fill });
+      if (args.cornerRadius !== undefined) setCornerRadius(el, ctx.pt(args.cornerRadius));
+    } else if (args.shape === 'ellipse') {
+      el = createOval(doc, where, { rect, ...common, fill: args.fill });
+    } else {
+      el = createPolygon(doc, where, {
+        rect,
+        sides: args.sides ?? 6,
+        starInset: args.starInset,
+        ...common,
+        fill: args.fill ?? 'Black',
+      });
+    }
+    ctx.save(doc);
+    const s2 = describe(doc, el);
+    return ok(
+      withNotes(
+        `Added ${kind}${s2.name ? ` "${s2.name}"` : ''} [${s2.id}] ${s2.position}, ${s2.size}.`,
+        notes,
+      ),
+      { item: s2, notes },
+    );
+  };
 
   reg.tool(
-    'add_rectangle',
+    'add_shape',
     {
-      title: 'Add rectangle',
+      title: 'Add a shape',
       description:
-        'Adds a rectangle (filled with Black unless fill is given; use fill "none" for an empty frame). To place a picture, use place_image instead.',
-      inputSchema: shapeSchema,
-    },
-    async (args) =>
-      run(() => {
-        const doc = ctx.open(args.document);
-        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'rectangle');
-        const el = createRectangle(doc, target(args), {
-          rect: ctx.rect(args),
-          name: args.name,
-          layer: args.layer,
-          fill: args.fill,
-          stroke: args.stroke,
-          strokeWeight: args.strokeWeight,
-          rotation: args.rotation,
-        });
-        if (args.cornerRadius !== undefined) setCornerRadius(el, ctx.pt(args.cornerRadius));
-        ctx.save(doc);
-        const s = describe(doc, el);
-        return ok(
-          withNotes(
-            `Added rectangle${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
-            notes,
-          ),
-          { item: s, notes },
-        );
-      }),
-  );
-
-  reg.tool(
-    'add_ellipse',
-    {
-      title: 'Add ellipse',
-      description: 'Adds an ellipse/circle inside the given box.',
-      inputSchema: shapeSchema,
-    },
-    async (args) =>
-      run(() => {
-        const doc = ctx.open(args.document);
-        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'ellipse');
-        const el = createOval(doc, target(args), {
-          rect: ctx.rect(args),
-          name: args.name,
-          layer: args.layer,
-          fill: args.fill,
-          stroke: args.stroke,
-          strokeWeight: args.strokeWeight,
-          rotation: args.rotation,
-        });
-        ctx.save(doc);
-        const s = describe(doc, el);
-        return ok(
-          withNotes(
-            `Added ellipse${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`,
-            notes,
-          ),
-          { item: s, notes },
-        );
-      }),
-  );
-
-  reg.tool(
-    'add_line',
-    {
-      title: 'Add line',
-      description: 'Adds a straight line (rule) between two points on a page.',
+        'Adds a rectangle, ellipse, line, polygon/star or free path. Rectangles, ellipses and polygons fill the box given by x/y/width/height; a line runs from x1/y1 to x2/y2; a path follows `points`. Filled with Black unless `fill` says otherwise (use "none" for an empty frame). To place a picture, use place_image instead.',
       inputSchema: toolInput({
         document: documentParam,
+        shape: z.enum(['rectangle', 'ellipse', 'line', 'polygon', 'path']).describe('Which shape to draw.'),
         ...targetParams,
-        x1: lengthParam,
-        y1: lengthParam,
-        x2: lengthParam,
-        y2: lengthParam,
-        name: z.string().optional(),
-        layer: z.string().optional(),
-        stroke: colorParam.optional().describe('Default Black.'),
-        strokeWeight: z.number().min(0).max(1000).optional().describe('Default 1pt.'),
-        strokeType: z.string().optional().describe('solid, dashed, dotted, thick-thin, thin-thick, wavy'),
+        x: lengthParam.optional().describe('Box left edge. Rectangle, ellipse and polygon.'),
+        y: lengthParam.optional().describe('Box top edge. Rectangle, ellipse and polygon.'),
+        width: lengthParam.optional().describe('Box width. Rectangle, ellipse and polygon.'),
+        height: lengthParam.optional().describe('Box height. Rectangle, ellipse and polygon.'),
+        x1: lengthParam.optional().describe('Line start x.'),
+        y1: lengthParam.optional().describe('Line start y.'),
+        x2: lengthParam.optional().describe('Line end x.'),
+        y2: lengthParam.optional().describe('Line end y.'),
+        points: z
+          .array(z.object({ x: lengthParam, y: lengthParam }))
+          .min(2)
+          .optional()
+          .describe('Path only: points from the top-left corner of the page.'),
+        closed: z.boolean().optional().describe('Path only: close it into a shape (default false).'),
+        smooth: z.boolean().optional().describe('Path only: curve through the points.'),
+        sides: z
+          .number()
+          .int()
+          .min(3)
+          .max(100)
+          .optional()
+          .describe('Polygon only: sides or star points (default 6).'),
+        starInset: z
+          .number()
+          .min(0)
+          .max(100)
+          .optional()
+          .describe('Polygon only: star point depth in percent - 0 = polygon, 50 = classic star.'),
+        cornerRadius: lengthParam.optional().describe('Rectangle only: rounded corners.'),
+        strokeType: z
+          .string()
+          .optional()
+          .describe('Line only: solid, dashed, dotted, thick-thin, thin-thick, wavy.'),
+        ...appearance,
       }),
     },
-    async (args) =>
-      run(() => {
-        const doc = ctx.open(args.document);
-        const from = { x: ctx.pt(args.x1), y: ctx.pt(args.y1) };
-        const to = { x: ctx.pt(args.x2), y: ctx.pt(args.y2) };
-        requireLine(ctx, from, to);
-        const notes = placementWarnings(
-          ctx,
-          {
-            x: Math.min(from.x, to.x),
-            y: Math.min(from.y, to.y),
-            width: Math.abs(to.x - from.x),
-            height: Math.abs(to.y - from.y),
-          },
-          pageBoxFor(doc, args),
-          'line',
-        );
-        const el = createLine(doc, target(args), {
-          from,
-          to,
-          name: args.name,
-          layer: args.layer,
-          stroke: args.stroke,
-          strokeWeight: args.strokeWeight,
-        });
-        if (args.strokeType) setStroke(doc, el, { type: args.strokeType });
-        ctx.save(doc);
-        const s = describe(doc, el);
-        return ok(withNotes(`Added line${s.name ? ` "${s.name}"` : ''} [${s.id}].`, notes), {
-          item: s,
-          notes,
-        });
-      }),
+    async (args) => run(() => addShape(args)),
   );
 
   reg.tool(

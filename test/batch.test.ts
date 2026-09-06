@@ -52,8 +52,17 @@ describe('batch', () => {
         },
       },
       {
-        tool: 'add_rectangle',
-        arguments: { document, page: 1, x: 20, y: 60, width: 160, height: 80, fill: 'Brand' },
+        tool: 'add_shape',
+        arguments: {
+          shape: 'rectangle',
+          document,
+          page: 1,
+          x: 20,
+          y: 60,
+          width: 160,
+          height: 80,
+          fill: 'Brand',
+        },
       },
     ];
 
@@ -63,9 +72,9 @@ describe('batch', () => {
     expect(r.structuredContent?.steps).toHaveLength(4);
 
     // Everything really landed in the file.
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect(items.content[0]?.text ?? '').toContain('Headline');
-    const styles = await call(client, 'list_styles', { document, kind: 'paragraph' });
+    const styles = await call(client, 'list', { what: 'styles', document, kind: 'paragraph' });
     expect(styles.content[0]?.text ?? '').toContain('Title');
   });
 
@@ -78,13 +87,13 @@ describe('batch', () => {
 
     await call(client, 'batch', {
       steps: Array.from({ length: 6 }, (_, i) => ({
-        tool: 'add_rectangle',
-        arguments: { document, page: 1, x: 10, y: 10 + i * 20, width: 40, height: 10 },
+        tool: 'add_shape',
+        arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 10 + i * 20, width: 40, height: 10 },
       })),
     });
 
     expect(statSync(document).mtimeMs).toBeGreaterThan(before);
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect((items.content[0]?.text ?? '').split('\n')).toHaveLength(6);
   });
 
@@ -95,16 +104,25 @@ describe('batch', () => {
 
     const r = await call(client, 'batch', {
       steps: [
-        { tool: 'add_rectangle', arguments: { document, page: 1, x: 10, y: 10, width: 40, height: 10 } },
-        { tool: 'add_rectangle', arguments: { document, page: 1, x: 10, y: 40, width: 0, height: 10 } },
-        { tool: 'add_rectangle', arguments: { document, page: 1, x: 10, y: 70, width: 40, height: 10 } },
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 10, width: 40, height: 10 },
+        },
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 40, width: 0, height: 10 },
+        },
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 70, width: 40, height: 10 },
+        },
       ],
     });
     expect(r.structuredContent?.failed).toBe(1);
     expect(r.content[0]?.text ?? '').toContain('not run');
 
     // The first rectangle survived; the third never ran.
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect((items.content[0]?.text ?? '').split('\n')).toHaveLength(1);
   });
 
@@ -116,12 +134,18 @@ describe('batch', () => {
     const r = await call(client, 'batch', {
       continueOnError: true,
       steps: [
-        { tool: 'add_rectangle', arguments: { document, page: 1, x: 10, y: 10, width: 0, height: 10 } },
-        { tool: 'add_rectangle', arguments: { document, page: 1, x: 10, y: 40, width: 40, height: 10 } },
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 10, width: 0, height: 10 },
+        },
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 40, width: 40, height: 10 },
+        },
       ],
     });
     expect(r.structuredContent?.failed).toBe(1);
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect((items.content[0]?.text ?? '').split('\n')).toHaveLength(1);
   });
 
@@ -136,7 +160,7 @@ describe('batch', () => {
     expect(missing.content[0]?.text ?? '').toContain('no tool called "add_widget"');
 
     const readOnly = await call(client, 'batch', {
-      steps: [{ tool: 'list_items', arguments: { document } }],
+      steps: [{ tool: 'list', arguments: { what: 'items', document } }],
     });
     expect(readOnly.content[0]?.text ?? '').toContain('only reads the document');
   });
@@ -164,7 +188,7 @@ describe('batch', () => {
       ],
     });
     expect(r.structuredContent?.failed).toBe(0);
-    const items = await call(client, 'list_items', { document, page: 1 });
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect(items.content[0]?.text ?? '').toContain('T');
   });
 });
