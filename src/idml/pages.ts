@@ -187,7 +187,7 @@ export function pageForSpreadRect(pages: PageInfo[], spreadId: string, r: Rect):
 
 // ---- page count bookkeeping --------------------------------------------------------------
 
-function updatePageCounts(doc: IdmlDocument): void {
+export function updatePageCounts(doc: IdmlDocument): void {
   let total = 0;
   for (const part of doc.spreadParts()) {
     const spread = children(doc.xml(part).documentElement, 'Spread')[0];
@@ -233,7 +233,7 @@ export function pageTransform(
   return side === 'left' ? [1, 0, 0, 1, -width, ty] : [1, 0, 0, 1, 0, ty];
 }
 
-function newSpread(
+export function newSpread(
   doc: IdmlDocument,
   afterPart: string | undefined,
   template: Element | undefined,

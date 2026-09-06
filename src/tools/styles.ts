@@ -13,7 +13,7 @@ import {
   resolveStyle,
 } from '../idml/styles.ts';
 import type { ToolContext } from './context.ts';
-import { colorParam, documentParam, ok, run } from './shared.ts';
+import { colorParam, documentParam, itemParam, ok, pageParam, run } from './shared.ts';
 
 const textStyleFields = {
   font: z
@@ -291,6 +291,145 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
             .join('\n') || 'No fonts listed',
           { fonts },
         );
+      }),
+  );
+}
+
+/** Object styles and gradient swatches. */
+export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): void {
+  server.registerTool(
+    'create_object_style',
+    {
+      title: 'Create object style',
+      description:
+        'Creates an object style: fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set. Apply it with apply_object_style.',
+      inputSchema: z.object({
+        document: documentParam,
+        name: z.string(),
+        basedOn: z.string().optional(),
+        fill: colorParam.optional(),
+        fillTint: z.number().min(0).max(100).optional(),
+        stroke: colorParam.optional(),
+        strokeWeight: z.number().min(0).optional(),
+        strokeType: z.string().optional().describe('Solid, Dashed, Dotted…'),
+        strokeAlignment: z.enum(['center', 'inside', 'outside']).optional(),
+        cornerRadius: z.number().min(0).optional().describe('Points.'),
+        cornerShape: z.enum(['rounded', 'inverse-rounded', 'bevel', 'inset', 'fancy', 'none']).optional(),
+        opacity: z.number().min(0).max(100).optional(),
+        paragraphStyle: z
+          .string()
+          .optional()
+          .describe('Paragraph style applied to text in frames using this style.'),
+        columns: z.number().int().min(1).max(20).optional(),
+        gutter: z.number().min(0).optional(),
+        inset: z.number().min(0).optional(),
+        verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
+        textWrap: z.enum(['none', 'bounding-box']).optional(),
+        textWrapOffset: z.number().min(0).optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const { document: _d, ...spec } = args;
+        const { createObjectStyle } = require('../idml/styles.ts') as typeof import('../idml/styles.ts');
+        const info = createObjectStyle(doc, spec);
+        ctx.save(doc);
+        return ok(`Created object style "${info.name}".`, { style: info });
+      }),
+  );
+
+  server.registerTool(
+    'update_object_style',
+    {
+      title: 'Update object style',
+      description: 'Changes an existing object style. Items using it follow automatically in InDesign.',
+      inputSchema: z.object({
+        document: documentParam,
+        style: z.string(),
+        fill: colorParam.optional(),
+        stroke: colorParam.optional(),
+        strokeWeight: z.number().min(0).optional(),
+        cornerRadius: z.number().min(0).optional(),
+        cornerShape: z.enum(['rounded', 'inverse-rounded', 'bevel', 'inset', 'fancy', 'none']).optional(),
+        opacity: z.number().min(0).max(100).optional(),
+        paragraphStyle: z.string().optional(),
+        columns: z.number().int().min(1).max(20).optional(),
+        inset: z.number().min(0).optional(),
+        verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
+        textWrap: z.enum(['none', 'bounding-box']).optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const { document: _d, style, ...spec } = args;
+        const { updateObjectStyle } = require('../idml/styles.ts') as typeof import('../idml/styles.ts');
+        const info = updateObjectStyle(doc, style, spec);
+        ctx.save(doc);
+        return ok(`Updated object style "${info.name}".`, { style: info });
+      }),
+  );
+
+  server.registerTool(
+    'create_gradient',
+    {
+      title: 'Create gradient swatch',
+      description:
+        'Creates a linear or radial gradient swatch from two or more colours. Use it as a fill like any swatch.',
+      inputSchema: z.object({
+        document: documentParam,
+        name: z.string(),
+        type: z.enum(['linear', 'radial']).default('linear'),
+        stops: z
+          .array(
+            z.object({
+              color: colorParam,
+              location: z.number().min(0).max(100).optional(),
+              midpoint: z.number().min(0).max(100).optional(),
+            }),
+          )
+          .min(2)
+          .describe('Colours from start to end; locations default to an even spread.'),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const { createGradient } = require('../idml/styles.ts') as typeof import('../idml/styles.ts');
+        const info = createGradient(doc, { name: args.name, type: args.type, stops: args.stops });
+        ctx.save(doc);
+        return ok(
+          `Created ${args.type} gradient "${info.name}". Use it as a fill, e.g. set_appearance with fill "${info.name}".`,
+          { swatch: info },
+        );
+      }),
+  );
+
+  server.registerTool(
+    'set_gradient_geometry',
+    {
+      title: 'Gradient direction',
+      description:
+        'Sets the angle and length of a gradient fill on an item (0° = left to right, 90° = bottom to top).',
+      inputSchema: z.object({
+        document: documentParam,
+        item: itemParam,
+        page: pageParam.optional(),
+        angle: z.number().optional(),
+        length: z.number().optional(),
+      }),
+    },
+    async (args) =>
+      run(() => {
+        const doc = ctx.open(args.document);
+        const { findItem } = require('../idml/items.ts') as typeof import('../idml/items.ts');
+        const { setGradientFillGeometry } =
+          require('../idml/styles.ts') as typeof import('../idml/styles.ts');
+        const found = findItem(doc, args.item, args.page);
+        setGradientFillGeometry(found.element, { angle: args.angle, length: args.length });
+        ctx.save(doc);
+        return ok('Gradient direction updated.');
       }),
   );
 }

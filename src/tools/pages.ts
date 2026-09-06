@@ -436,3 +436,164 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 }
+
+/** Page ordering, layer management and master-item overrides. */
+export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void {
+  server.registerTool(
+    'move_page',
+    {
+      title: 'Move page',
+      description:
+        'Moves a page to another position. Spreads are rebuilt the way InDesign does it, and everything on the page moves with it.',
+      inputSchema: z.object({
+        document: documentParam,
+        page: pageParam,
+        to: z.number().int().min(1).describe('New position (1 = first page).'),
+      }),
+    },
+    async ({ document, page, to }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { movePage } = require('../idml/pageops.ts') as typeof import('../idml/pageops.ts');
+        const pages = movePage(doc, page, to);
+        ctx.save(doc);
+        return ok(`Moved page to position ${to}. Order is now: ${pages.map((p) => p.name).join(', ')}.`, {
+          pages: pages.map((p) => p.index),
+        });
+      }),
+  );
+
+  server.registerTool(
+    'duplicate_page',
+    {
+      title: 'Duplicate page',
+      description:
+        'Copies a page with everything on it and inserts the copy after the original (or at a chosen position).',
+      inputSchema: z.object({
+        document: documentParam,
+        page: pageParam,
+        after: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Insert after this page number (0 = at the front).'),
+      }),
+    },
+    async ({ document, page, after }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { duplicatePage } = require('../idml/pageops.ts') as typeof import('../idml/pageops.ts');
+        const created = duplicatePage(doc, page, after);
+        ctx.save(doc);
+        return ok(`Duplicated page ${page} as page ${created.index}.`, { page: created.index });
+      }),
+  );
+
+  server.registerTool(
+    'reorder_pages',
+    {
+      title: 'Reorder pages',
+      description: 'Puts the pages in the given order, e.g. [3,1,2].',
+      inputSchema: z.object({
+        document: documentParam,
+        order: z.array(pageParam).min(1).describe('Every page, in the new order.'),
+      }),
+    },
+    async ({ document, order }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { reflowPages } = require('../idml/pageops.ts') as typeof import('../idml/pageops.ts');
+        const ids = order.map((p) => findPage(doc, p).id);
+        const pages = reflowPages(doc, ids);
+        ctx.save(doc);
+        return ok(`Pages reordered: ${pages.map((p) => p.name).join(', ')}.`, {
+          pages: pages.map((p) => p.index),
+        });
+      }),
+  );
+
+  server.registerTool(
+    'override_master_item',
+    {
+      title: 'Override master page item',
+      description:
+        'Makes an item that comes from the master page editable on one page (like Cmd/Ctrl+Shift-clicking it in InDesign). Use it to change a headline or logo on a single page.',
+      inputSchema: z.object({
+        document: documentParam,
+        page: pageParam,
+        item: z.string().describe('Name or id of the item on the master page.'),
+      }),
+    },
+    async ({ document, page, item }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { overrideMasterItem } = require('../idml/masters.ts') as typeof import('../idml/masters.ts');
+        const el = overrideMasterItem(doc, page, item);
+        ctx.save(doc);
+        const id = el.getAttribute('Self')!;
+        return ok(`"${item}" is now editable on page ${page} as [${id}].`, { id });
+      }),
+  );
+
+  server.registerTool(
+    'delete_layer',
+    {
+      title: 'Delete layer',
+      description: 'Deletes a layer; its items move to another layer, or are deleted with it.',
+      inputSchema: z.object({
+        document: documentParam,
+        layer: z.string(),
+        moveItemsTo: z.string().optional(),
+        deleteItems: z.boolean().optional(),
+      }),
+      annotations: { destructiveHint: true },
+    },
+    async ({ document, layer, moveItemsTo, deleteItems }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { deleteLayer } = require('../idml/layers.ts') as typeof import('../idml/layers.ts');
+        const r = deleteLayer(doc, layer, { moveItemsTo, deleteItems });
+        ctx.save(doc);
+        return ok(`Deleted layer "${layer}" (${r.moved} item(s) moved, ${r.deleted} deleted).`, r);
+      }),
+  );
+
+  server.registerTool(
+    'reorder_layer',
+    {
+      title: 'Reorder layer',
+      description: 'Moves a layer up or down the stack. Position 1 is the top-most layer.',
+      inputSchema: z.object({
+        document: documentParam,
+        layer: z.string(),
+        position: z.number().int().min(1),
+      }),
+    },
+    async ({ document, layer, position }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { reorderLayer } = require('../idml/layers.ts') as typeof import('../idml/layers.ts');
+        const layers = reorderLayer(doc, layer, position);
+        ctx.save(doc);
+        return ok(`Layer order (top first): ${layers.map((l) => l.name).join(', ')}.`, { layers });
+      }),
+  );
+
+  server.registerTool(
+    'set_active_layer',
+    {
+      title: 'Set active layer',
+      description: 'Chooses the layer that new items are created on.',
+      inputSchema: z.object({ document: documentParam, layer: z.string() }),
+    },
+    async ({ document, layer }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const { setActiveLayer } = require('../idml/layers.ts') as typeof import('../idml/layers.ts');
+        setActiveLayer(doc, layer);
+        ctx.save(doc);
+        return ok(`New items will be created on layer "${layer}".`);
+      }),
+  );
+}

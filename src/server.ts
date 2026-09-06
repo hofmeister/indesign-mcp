@@ -10,10 +10,11 @@ import { ToolContext } from './tools/context.ts';
 import { registerDocumentTools } from './tools/document.ts';
 import { registerImageTools } from './tools/images.ts';
 import { registerItemTools } from './tools/items.ts';
-import { registerPageTools } from './tools/pages.ts';
+import { registerPageOpsTools, registerPageTools } from './tools/pages.ts';
 import { registerPreviewTools } from './tools/preview.ts';
 import { registerReferenceTools } from './tools/references.ts';
-import { registerStyleTools } from './tools/styles.ts';
+import { registerShapeTools } from './tools/shapes.ts';
+import { registerObjectStyleTools, registerStyleTools } from './tools/styles.ts';
 import { registerTextTools } from './tools/text.ts';
 import { VERSION } from './version.ts';
 
@@ -76,6 +77,9 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
   registerItemTools(server, ctx);
   registerTextTools(server, ctx);
   registerStyleTools(server, ctx);
+  registerObjectStyleTools(server, ctx);
+  registerShapeTools(server, ctx);
+  registerPageOpsTools(server, ctx);
   registerImageTools(server, ctx, imageProvider);
   const catalog = new ReferenceCatalog(config.referenceDirs.filter((d) => existsSync(d)));
   registerReferenceTools(server, ctx, catalog);

@@ -311,7 +311,7 @@ export interface NewItemOptions {
   rotation?: number;
 }
 
-function resolveContainer(
+export function resolveContainer(
   doc: IdmlDocument,
   target: Target,
 ): { container: Element; part: string; origin: Point; page?: PageInfo } {
@@ -346,18 +346,23 @@ function resolveLayer(doc: IdmlDocument, layer: string | undefined): string {
   return attr(el, 'Self')!;
 }
 
-function commonAttrs(doc: IdmlDocument, options: NewItemOptions, objectStyle: string): string {
+export function commonAttrs(doc: IdmlDocument, options: NewItemOptions, objectStyle: string): string {
   return `Self="${doc.newId()}" OverriddenPageItemProps="" Visible="true" Name="${options.name ? escapeAttr(options.name) : '$ID/'}" ItemLayer="${resolveLayer(doc, options.layer)}" Locked="false" LocalDisplaySetting="Default" GradientFillStart="0 0" GradientFillLength="0" GradientFillAngle="0" GradientStrokeStart="0 0" GradientStrokeLength="0" GradientStrokeAngle="0" AppliedObjectStyle="ObjectStyle/$ID/${objectStyle}" ItemTransform="1 0 0 1 0 0"`;
 }
 
-const TEXT_WRAP = `<TextWrapPreference Inverse="false" ApplyToMasterPageOnly="false" TextWrapSide="BothSides" TextWrapMode="None"><Properties><TextWrapOffset Top="0" Left="0" Bottom="0" Right="0"/></Properties></TextWrapPreference>`;
+export const TEXT_WRAP = `<TextWrapPreference Inverse="false" ApplyToMasterPageOnly="false" TextWrapSide="BothSides" TextWrapMode="None"><Properties><TextWrapOffset Top="0" Left="0" Bottom="0" Right="0"/></Properties></TextWrapPreference>`;
 
 function appendItem(container: Element, el: Element): void {
   // Page items follow the Page elements; append at the end (top of z-order).
   insertAfter(container, el);
 }
 
-function applyAppearance(doc: IdmlDocument, el: Element, options: NewItemOptions, spreadRect: Rect): void {
+export function applyAppearance(
+  doc: IdmlDocument,
+  el: Element,
+  options: NewItemOptions,
+  spreadRect: Rect,
+): void {
   if (options.fill !== undefined) setFill(doc, el, options.fill);
   if (options.stroke !== undefined || options.strokeWeight !== undefined) {
     setStroke(doc, el, { swatch: options.stroke, weight: options.strokeWeight });

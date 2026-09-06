@@ -127,3 +127,74 @@ export function createLayer(
 export function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 }
+
+/**
+ * Deletes a layer. Items on it move to `moveItemsTo` (default: the first remaining layer),
+ * or are deleted when `deleteItems` is true.
+ */
+export function deleteLayer(
+  doc: import('./document.ts').IdmlDocument,
+  ref: string,
+  options: { moveItemsTo?: string; deleteItems?: boolean } = {},
+): { moved: number; deleted: number } {
+  const layers = layerElements(doc);
+  if (layers.length <= 1) throw new Error('A document must keep at least one layer');
+  const el = findLayer(doc, ref);
+  if (!el) throw new Error(`Layer "${ref}" not found`);
+  const id = attr(el, 'Self')!;
+  const target = options.moveItemsTo
+    ? findLayer(doc, options.moveItemsTo)
+    : layers.find((l) => attr(l, 'Self') !== id);
+  if (!options.deleteItems && !target) throw new Error(`Layer "${options.moveItemsTo}" not found`);
+  const targetId = target ? attr(target, 'Self')! : undefined;
+  let moved = 0;
+  let deleted = 0;
+  const { removeItemElement } = require('./pages.ts') as typeof import('./pages.ts');
+  for (const part of [...doc.spreadParts(), ...doc.masterSpreadParts()]) {
+    const root = doc.xml(part).documentElement;
+    if (!root) continue;
+    for (const item of Array.from(root.getElementsByTagName('*')) as Element[]) {
+      if (attr(item, 'ItemLayer') !== id) continue;
+      if (options.deleteItems) {
+        removeItemElement(doc, item);
+        deleted++;
+      } else if (targetId) {
+        item.setAttribute('ItemLayer', targetId);
+        moved++;
+      }
+    }
+  }
+  el.parentNode?.removeChild(el);
+  if (attr(doc.root, 'ActiveLayer') === id) {
+    doc.root.setAttribute('ActiveLayer', attr(layers.find((l) => attr(l, 'Self') !== id)!, 'Self')!);
+  }
+  return { moved, deleted };
+}
+
+/** Moves a layer in the stacking order. Position 1 is the top-most layer. */
+export function reorderLayer(
+  doc: import('./document.ts').IdmlDocument,
+  ref: string,
+  position: number,
+): LayerInfo[] {
+  const layers = layerElements(doc);
+  const el = findLayer(doc, ref);
+  if (!el) throw new Error(`Layer "${ref}" not found`);
+  const others = layers.filter((l) => l !== el);
+  const index = Math.max(0, Math.min(others.length, Math.floor(position) - 1));
+  el.parentNode?.removeChild(el);
+  const before = others[index];
+  if (before) doc.root.insertBefore(el, before);
+  else if (others.length) doc.root.insertBefore(el, others[others.length - 1]!.nextSibling);
+  else doc.root.appendChild(el);
+  return listLayers(doc);
+}
+
+/** Sets the layer new items go on. */
+export function setActiveLayer(doc: import('./document.ts').IdmlDocument, ref: string): string {
+  const el = findLayer(doc, ref);
+  if (!el) throw new Error(`Layer "${ref}" not found`);
+  const id = attr(el, 'Self')!;
+  doc.root.setAttribute('ActiveLayer', id);
+  return id;
+}

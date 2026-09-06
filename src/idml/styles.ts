@@ -630,3 +630,245 @@ export function fontsUsed(doc: IdmlDocument): Set<string> {
 }
 
 export { decodeStyleName, displayStyleName };
+
+// ---- object styles ------------------------------------------------------------------------------
+
+export interface ObjectStyleSpec {
+  name: string;
+  basedOn?: string;
+  fill?: string;
+  fillTint?: number;
+  stroke?: string;
+  strokeWeight?: number;
+  strokeType?: string;
+  strokeAlignment?: 'center' | 'inside' | 'outside';
+  cornerRadius?: number;
+  cornerShape?: 'rounded' | 'inverse-rounded' | 'bevel' | 'inset' | 'fancy' | 'none';
+  opacity?: number;
+  paragraphStyle?: string;
+  /** Text frame options applied by the style. */
+  columns?: number;
+  gutter?: number;
+  inset?: number;
+  verticalJustification?: 'top' | 'center' | 'bottom' | 'justify';
+  textWrap?: 'none' | 'bounding-box';
+  textWrapOffset?: number;
+}
+
+const CORNER_OPTIONS: Record<string, string> = {
+  rounded: 'RoundedCorner',
+  'inverse-rounded': 'InverseRoundedCorner',
+  bevel: 'BevelCorner',
+  inset: 'InsetCorner',
+  fancy: 'FancyCorner',
+  none: 'None',
+};
+
+/** Attributes an object style writes onto the items that use it. */
+export function objectStyleAttrs(
+  doc: IdmlDocument,
+  spec: ObjectStyleSpec,
+): Record<string, string | number | boolean | null> {
+  const a: Record<string, string | number | boolean | null> = {};
+  if (spec.fill !== undefined) a.FillColor = resolveSwatch(doc, spec.fill);
+  if (spec.fillTint !== undefined) a.FillTint = spec.fillTint;
+  if (spec.stroke !== undefined) a.StrokeColor = resolveSwatch(doc, spec.stroke);
+  if (spec.strokeWeight !== undefined) a.StrokeWeight = spec.strokeWeight;
+  if (spec.strokeType) a.StrokeType = `StrokeStyle/$ID/${spec.strokeType}`;
+  if (spec.strokeAlignment) {
+    a.StrokeAlignment = { center: 'CenterAlignment', inside: 'InsideAlignment', outside: 'OutsideAlignment' }[
+      spec.strokeAlignment
+    ];
+  }
+  if (spec.cornerRadius !== undefined) {
+    const option = CORNER_OPTIONS[spec.cornerShape ?? 'rounded'] ?? 'RoundedCorner';
+    for (const corner of ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight']) {
+      a[`${corner}CornerOption`] = option;
+      a[`${corner}CornerRadius`] = spec.cornerRadius;
+    }
+  }
+  if (spec.paragraphStyle) a.AppliedParagraphStyle = styleSelf(doc, 'ParagraphStyle', spec.paragraphStyle);
+  return a;
+}
+
+function objectStyleChildren(spec: ObjectStyleSpec): string {
+  const parts: string[] = [];
+  if (
+    spec.columns !== undefined ||
+    spec.gutter !== undefined ||
+    spec.inset !== undefined ||
+    spec.verticalJustification
+  ) {
+    const vj = spec.verticalJustification
+      ? { top: 'TopAlign', center: 'CenterAlign', bottom: 'BottomAlign', justify: 'JustifyAlign' }[
+          spec.verticalJustification
+        ]
+      : 'TopAlign';
+    const inset = spec.inset ?? 0;
+    parts.push(
+      `<TextFramePreference TextColumnCount="${Math.max(1, Math.floor(spec.columns ?? 1))}" TextColumnGutter="${spec.gutter ?? 12}" VerticalJustification="${vj}"><Properties><InsetSpacing type="list"><ListItem type="unit">${inset}</ListItem><ListItem type="unit">${inset}</ListItem><ListItem type="unit">${inset}</ListItem><ListItem type="unit">${inset}</ListItem></InsetSpacing></Properties></TextFramePreference>`,
+    );
+  }
+  if (spec.textWrap) {
+    const o = spec.textWrapOffset ?? 0;
+    parts.push(
+      `<TextWrapPreference Inverse="false" ApplyToMasterPageOnly="false" TextWrapSide="BothSides" TextWrapMode="${spec.textWrap === 'none' ? 'None' : 'BoundingBoxTextWrap'}"><Properties><TextWrapOffset Top="${o}" Left="${o}" Bottom="${o}" Right="${o}"/></Properties></TextWrapPreference>`,
+    );
+  }
+  if (spec.opacity !== undefined) {
+    parts.push(
+      `<TransparencySetting><BlendingSetting Opacity="${Math.max(0, Math.min(100, spec.opacity))}" BlendMode="Normal"/></TransparencySetting>`,
+    );
+  }
+  return parts.join('');
+}
+
+export function createObjectStyle(doc: IdmlDocument, spec: ObjectStyleSpec): StyleInfo {
+  if (
+    styleElements(doc, 'ObjectStyle').some(
+      (s) => displayStyleName(attr(s.element, 'Name') ?? '').toLowerCase() === spec.name.toLowerCase(),
+    )
+  ) {
+    throw new Error(`An object style named "${spec.name}" already exists. Use update_style to change it.`);
+  }
+  const styles = doc.resource('Styles');
+  let root = firstChild(styles, 'RootObjectStyleGroup');
+  if (!root) {
+    root = fragment(styles.ownerDocument!, `<RootObjectStyleGroup Self="${doc.newId()}"/>`);
+    insertAfter(styles, root);
+  }
+  const self = `ObjectStyle/${encodeStyleName(spec.name)}`;
+  const basedOn = spec.basedOn ? attr(resolveStyle(doc, 'ObjectStyle', spec.basedOn), 'Name')! : '$ID/[None]';
+  const enable = [
+    spec.fill !== undefined ? 'EnableFill="true"' : 'EnableFill="false"',
+    spec.stroke !== undefined || spec.strokeWeight !== undefined
+      ? 'EnableStroke="true"'
+      : 'EnableStroke="false"',
+    spec.paragraphStyle ? 'EnableParagraphStyle="true"' : 'EnableParagraphStyle="false"',
+    spec.columns !== undefined || spec.inset !== undefined || spec.verticalJustification
+      ? 'EnableTextFrameGeneralOptions="true"'
+      : 'EnableTextFrameGeneralOptions="false"',
+    spec.textWrap ? 'EnableTextWrapAndOthers="true"' : 'EnableTextWrapAndOthers="false"',
+    spec.cornerRadius !== undefined ? 'EnableStrokeAndCornerOptions="true"' : '',
+    spec.opacity !== undefined ? 'EnableFillTransparencySettings="true"' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const el = fragment(
+    styles.ownerDocument!,
+    `<ObjectStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" ${enable} EmitCss="true" IncludeClass="true" ExtendedKeyboardShortcut="0 0 0"><Properties><BasedOn type="object">${escapeAttr(basedOn)}</BasedOn></Properties>${objectStyleChildren(spec)}</ObjectStyle>`,
+  );
+  setAttrs(el, objectStyleAttrs(doc, spec));
+  insertAfter(root, el, children(root, 'ObjectStyle').at(-1));
+  return styleInfo(el);
+}
+
+export function updateObjectStyle(
+  doc: IdmlDocument,
+  ref: string,
+  spec: Omit<ObjectStyleSpec, 'name'>,
+): StyleInfo {
+  const el = resolveStyle(doc, 'ObjectStyle', ref);
+  setAttrs(el, objectStyleAttrs(doc, { ...spec, name: ref }));
+  const extra = objectStyleChildren({ ...spec, name: ref });
+  if (extra) {
+    for (const tag of ['TextFramePreference', 'TextWrapPreference', 'TransparencySetting']) {
+      const existing = firstChild(el, tag);
+      if (existing) el.removeChild(existing);
+    }
+    const frag = fragment(el.ownerDocument!, `<Wrapper>${extra}</Wrapper>`);
+    for (const c of children(frag)) el.appendChild(c.cloneNode(true));
+  }
+  return styleInfo(el);
+}
+
+/**
+ * Applies an object style to an item: sets AppliedObjectStyle and copies the style's own
+ * attributes onto the item, which is what InDesign writes when a style is applied.
+ */
+export function applyObjectStyle(doc: IdmlDocument, item: Element, ref: string): string {
+  const style = resolveStyle(doc, 'ObjectStyle', ref);
+  const self = attr(style, 'Self')!;
+  item.setAttribute('AppliedObjectStyle', self);
+  const COPY = [
+    'FillColor',
+    'FillTint',
+    'StrokeColor',
+    'StrokeTint',
+    'StrokeWeight',
+    'StrokeType',
+    'StrokeAlignment',
+    'TopLeftCornerOption',
+    'TopRightCornerOption',
+    'BottomLeftCornerOption',
+    'BottomRightCornerOption',
+    'TopLeftCornerRadius',
+    'TopRightCornerRadius',
+    'BottomLeftCornerRadius',
+    'BottomRightCornerRadius',
+  ];
+  for (const a of COPY) {
+    const v = attr(style, a);
+    if (v !== undefined) item.setAttribute(a, v);
+  }
+  for (const tag of ['TextFramePreference', 'TextWrapPreference', 'TransparencySetting']) {
+    const src = firstChild(style, tag);
+    if (!src) continue;
+    if (tag === 'TextFramePreference' && item.tagName !== 'TextFrame') continue;
+    const existing = firstChild(item, tag);
+    const clone = item.ownerDocument!.importNode(src, true) as Element;
+    if (existing) item.replaceChild(clone, existing);
+    else item.appendChild(clone);
+  }
+  const para = attr(style, 'AppliedParagraphStyle');
+  if (para && item.tagName === 'TextFrame') {
+    const storyId = attr(item, 'ParentStory');
+    const story = storyId ? doc.story(storyId) : undefined;
+    if (story)
+      for (const psr of Array.from(story.getElementsByTagName('ParagraphStyleRange')) as Element[])
+        psr.setAttribute('AppliedParagraphStyle', para);
+  }
+  return self;
+}
+
+// ---- gradients ----------------------------------------------------------------------------------
+
+export interface GradientSpec {
+  name: string;
+  type?: 'linear' | 'radial';
+  /** Two or more colours; each is a swatch name or an inline colour. */
+  stops: { color: string; location?: number; midpoint?: number }[];
+}
+
+export function createGradient(doc: IdmlDocument, spec: GradientSpec): SwatchInfo {
+  if (spec.stops.length < 2) throw new Error('A gradient needs at least two colours');
+  const existing = swatchElements(doc).find(
+    (s) => displayStyleName(attr(s, 'Name') ?? '').toLowerCase() === spec.name.toLowerCase(),
+  );
+  if (existing) throw new Error(`A swatch named "${spec.name}" already exists`);
+  const graphic = doc.resource('Graphic');
+  const self = `Gradient/${encodeStyleName(spec.name)}`;
+  const stops = spec.stops.map((s, i) => {
+    const color = resolveSwatch(doc, s.color);
+    const location = s.location ?? (i / (spec.stops.length - 1)) * 100;
+    return `<GradientStop Self="${doc.newId()}" StopColor="${escapeAttr(color)}" Location="${Math.max(0, Math.min(100, location))}" Midpoint="${s.midpoint ?? 50}"/>`;
+  });
+  const el = fragment(
+    graphic.ownerDocument!,
+    `<Gradient Self="${escapeAttr(self)}" Type="${spec.type === 'radial' ? 'Radial' : 'Linear'}" Name="${escapeAttr(spec.name)}" ColorEditable="true" ColorRemovable="true" Visible="true" SwatchCreatorID="7937">${stops.join('')}</Gradient>`,
+  );
+  insertAfter(graphic, el, children(graphic, 'Gradient').at(-1) ?? children(graphic, 'Color').at(-1));
+  return swatchInfo(el);
+}
+
+/** Sets the gradient geometry (angle and length) of an item's fill. */
+export function setGradientFillGeometry(
+  item: Element,
+  options: { angle?: number; length?: number; startX?: number; startY?: number },
+): void {
+  if (options.angle !== undefined) item.setAttribute('GradientFillAngle', String(options.angle));
+  if (options.length !== undefined) item.setAttribute('GradientFillLength', String(options.length));
+  if (options.startX !== undefined || options.startY !== undefined) {
+    item.setAttribute('GradientFillStart', `${options.startX ?? 0} ${options.startY ?? 0}`);
+  }
+}
