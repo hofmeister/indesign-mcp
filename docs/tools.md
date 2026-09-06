@@ -1,0 +1,1580 @@
+# Tools
+
+116 tools. Parameters marked with * are required. Lengths accept a number in millimetres or a string with a unit ("10mm", "0.5in", "12pt").
+
+## Documents
+
+### `server_info`
+
+Returns the version of the InDesign MCP server, its default unit and folders.
+
+| Parameter | Type | Description |
+|---|---|---|
+
+
+### `new_document`
+
+Creates a new InDesign document (.idml) from the built-in blank template: page size, orientation, number of pages, margins, columns and bleed. The file is saved immediately. Then use add_text_frame, place_image etc. to fill it.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` * | string | Where to save, e.g. "flyer.idml" (saved in the documents folder) or an absolute path. |
+| `pageSize` | string | Preset name: A3, A4, A5, A6, B5, Letter, Legal, Tabloid, US Business Card, EU Business Card, Instagram Post, Instagram Story, Facebook Post. Default A4. Ignore when width/height are given. |
+| `orientation` | `portrait` \| `landscape` |  |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `pages` | integer | Number of pages (default 1). |
+| `facingPages` | boolean | Facing pages (spreads) like a brochure. Default false. |
+| `margins` | number,string | Uniform page margin (default 12.7mm). |
+| `columns` | integer |  |
+| `gutter` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `bleed` | number,string | Bleed on all sides, e.g. "3mm". |
+| `overwrite` | boolean | Overwrite an existing file. Default false. |
+
+### `open_document`
+
+Opens an existing .idml file and returns a summary of its pages, items, styles and swatches (same as describe_document).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `describe_document`
+
+Describes a document: pages with every item (type, name, id, position and size in mm, text, images), master pages, layers, paragraph/character styles, swatches and fonts. Call this before editing so you can refer to items by name or id.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Only describe this page. |
+
+### `validate_document`
+
+Checks the document for problems that would stop InDesign from opening it or make it behave oddly: missing parts, duplicate ids, references to deleted styles/swatches/stories, page-count mismatches, broken text threads, and (schema: true, default) every part against Adobe's IDML schema.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `schema` | boolean | Also validate against the IDML RELAX NG schema (default true). |
+
+### `save_document_as`
+
+Saves a copy of the document under a new name. Later edits should refer to the new path.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `newPath` * | string |  |
+| `overwrite` | boolean |  |
+
+### `set_document_options`
+
+Changes document-wide settings: bleed, slug, facing pages. Page size is changed with set_page_size.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `bleed` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `slug` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `facingPages` | boolean |  |
+
+## Pages, masters and layers
+
+### `list_pages`
+
+Lists the pages with size, side (left/right), margins, columns and applied master page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `add_pages`
+
+Adds pages at the end of the document (new pages get the same master as the last page unless specified).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `count` | integer | How many pages (default 1). |
+| `master` | string | Master page to apply, e.g. "A-Master", or "none". |
+
+### `remove_pages`
+
+Deletes pages and everything on them.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `pages` * | array |  |
+
+### `set_page_size`
+
+Changes the page size of the whole document. Presets: A3, A4, A5, A6, B5, Letter, Legal, Tabloid, US Business Card, EU Business Card, Instagram Post, Instagram Story, Facebook Post, or give width and height. Existing items keep their position relative to the top-left corner of their page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `pageSize` | string |  |
+| `orientation` | `portrait` \| `landscape` |  |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+
+### `set_margins_and_columns`
+
+Sets page margins and column guides for all pages, or for specific pages.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `margins` | number,string \| object |  |
+| `columns` | integer |  |
+| `gutter` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `pages` | array | Limit to these pages (default: all pages and masters). |
+
+### `list_masters`
+
+Lists master pages (parent pages) with the number of items on each.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `apply_master`
+
+Applies a master page (or "none") to the given pages.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `master` * | string |  |
+| `pages` * | array |  |
+
+### `create_master`
+
+Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Add items to it with add_text_frame etc. using target master.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `prefix` * | string | One-letter prefix, e.g. "B". |
+| `name` * | string | Name, e.g. "Chapter". |
+| `basedOn` | string | Existing master to duplicate (default: the first one). Its items are copied. |
+| `keepItems` | boolean | Copy the items of the source master (default true). |
+
+### `list_layers`
+
+Lists layers (top-most first).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `create_layer`
+
+Creates a new layer on top of the others.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+| `color` | string | Layer color name, e.g. Red, Green, LightBlue. |
+
+### `set_layer_options`
+
+Renames, hides/shows or locks/unlocks a layer.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `layer` * | string |  |
+| `name` | string |  |
+| `visible` | boolean |  |
+| `locked` | boolean |  |
+
+### `set_item_layer`
+
+Moves an item to another layer.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `layer` * | string |  |
+
+## Frames and shapes
+
+### `list_items`
+
+Lists the items (frames, shapes, images, text) on a page or in the whole document with names, ids, positions and sizes.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `includeMasters` | boolean |  |
+
+### `add_text_frame`
+
+Adds a text frame with text to a page. Positions are measured from the top-left corner of the page. Paragraphs are separated by newlines; **bold** and *italic* markup is supported. Give it a name so you can edit it later.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `x` * | number,string | Distance from the left edge of the page. |
+| `y` * | number,string | Distance from the top edge of the page. |
+| `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `text` | string | The text. Newlines start new paragraphs. |
+| `paragraphs` | array | Paragraphs with their own styles, instead of `text`. |
+| `paragraphStyle` | string | Paragraph style name to apply to all paragraphs. |
+| `columns` | integer |  |
+| `gutter` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `inset` | number,string | Inset spacing on all sides. |
+| `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
+| `autoSize` | `off` \| `height` \| `width` \| `both` | Auto-size the frame to its text. |
+| `name` | string | A name to refer to the item later, e.g. "Headline". |
+| `layer` | string | Layer name (default: the active layer). |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number | Stroke weight in points. |
+| `rotation` | number | Rotation in degrees (counter-clockwise). |
+
+### `add_rectangle`
+
+Adds a rectangle (filled with Black unless fill is given; use fill "none" for an empty frame). To place a picture, use place_image instead.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `x` * | number,string | Distance from the left edge of the page. |
+| `y` * | number,string | Distance from the top edge of the page. |
+| `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `name` | string | A name to refer to the item later, e.g. "Headline". |
+| `layer` | string | Layer name (default: the active layer). |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number | Stroke weight in points. |
+| `rotation` | number | Rotation in degrees (counter-clockwise). |
+| `cornerRadius` | number,string | Rounded corners (rectangles only). |
+
+### `add_ellipse`
+
+Adds an ellipse/circle inside the given box.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `x` * | number,string | Distance from the left edge of the page. |
+| `y` * | number,string | Distance from the top edge of the page. |
+| `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `name` | string | A name to refer to the item later, e.g. "Headline". |
+| `layer` | string | Layer name (default: the active layer). |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number | Stroke weight in points. |
+| `rotation` | number | Rotation in degrees (counter-clockwise). |
+| `cornerRadius` | number,string | Rounded corners (rectangles only). |
+
+### `add_line`
+
+Adds a straight line (rule) between two points on a page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `x1` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y1` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `x2` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y2` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `name` | string |  |
+| `layer` | string |  |
+| `stroke` | string | Default Black. |
+| `strokeWeight` | number | Default 1pt. |
+| `strokeType` | string | solid, dashed, dotted, thick-thin, thin-thick, wavy |
+
+### `move_item`
+
+Moves an item to a position (from the top-left of its page) or by an offset (dx/dy).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Disambiguates items with the same name. |
+| `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `dx` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `dy` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `toPage` | integer \| string | Move the item to another page (keeps x/y unless given). |
+
+### `resize_item`
+
+Changes the width and/or height of an item, keeping its top-left corner in place.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+
+### `rotate_item`
+
+Sets the rotation of an item in degrees (counter-clockwise, around its center).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `degrees` * | number |  |
+
+### `set_appearance`
+
+Changes fill color, stroke (color, weight, type), corner radius and opacity of an item.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `fillTint` | number |  |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number |  |
+| `strokeType` | string |  |
+| `strokeAlignment` | `center` \| `inside` \| `outside` |  |
+| `cornerRadius` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `cornerShape` | `rounded` \| `inverse-rounded` \| `bevel` \| `inset` \| `fancy` \| `none` |  |
+| `opacity` | number |  |
+| `blendMode` | string | Normal, Multiply, Screen, Overlay, Darken, Lighten… |
+
+### `delete_item`
+
+Deletes an item (and its text story if it was a text frame).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `duplicate_item`
+
+Duplicates an item, offset by dx/dy (default 5mm) or onto another page at the same position.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `dx` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `dy` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `toPage` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `name` | string |  |
+
+### `rename_item`
+
+Gives an item a name (or removes it).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `name` | string |  |
+
+### `arrange_item`
+
+Brings an item to the front / sends it to the back / one step forward or backward within its layer order.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `action` * | `front` \| `back` \| `forward` \| `backward` |  |
+
+### `align_items`
+
+Aligns items to the page or page margins: left, center, right, top, middle, bottom. Also distributes several items evenly.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `items` * | array |  |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `to` | `page` \| `margins` |  |
+| `horizontal` | `left` \| `center` \| `right` |  |
+| `vertical` | `top` \| `middle` \| `bottom` |  |
+| `distribute` | `horizontal` \| `vertical` | Distribute the items evenly between the outermost ones. |
+
+### `set_text_frame_options`
+
+Columns, gutter, inset spacing, vertical justification and auto-size of a text frame.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `columns` | integer |  |
+| `gutter` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `inset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
+| `autoSize` | `off` \| `height` \| `width` \| `both` |  |
+
+### `set_text_wrap`
+
+Makes text in other frames flow around this item (bounding box wrap) or turns wrap off.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `mode` * | `none` \| `bounding-box` \| `jump` \| `next-column` |  |
+| `offset` | number,string | Distance between item and text. |
+
+### `fit_frame_to_content`
+
+For text frames: turns on auto-size so the frame grows/shrinks with its text (height, or both). For image frames use set_image_fit.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `mode` | `height` \| `both` |  |
+
+## Text
+
+### `get_text`
+
+Returns the text of a text frame (or of every text frame in the document), paragraph by paragraph with style names.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `set_text`
+
+Replaces all text in a text frame. Use `text` (newlines = paragraphs) or `paragraphs` for per-paragraph styles.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `text` | string |  |
+| `paragraphs` | array |  |
+| `paragraphStyle` | string | Default paragraph style for all paragraphs. |
+| `markup` | boolean | Interpret **bold**/*italic* (default true). |
+
+### `append_text`
+
+Adds paragraphs at the end of a text frame's text.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `text` | string |  |
+| `paragraphs` | array |  |
+| `paragraphStyle` | string |  |
+
+### `find_and_replace`
+
+Finds and replaces text across the whole document or inside one text frame. Supports regular expressions.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `find` * | string |  |
+| `replace` | string | Omit to only count matches. |
+| `item` | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `regex` | boolean |  |
+| `caseSensitive` | boolean |  |
+| `wholeWord` | boolean |  |
+
+### `apply_paragraph_style`
+
+Applies a paragraph style to all paragraphs of a text frame, to specific paragraph numbers, or to paragraphs containing some text.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `style` * | string |  |
+| `paragraphs` | array | 1-based paragraph numbers. |
+| `containing` | string |  |
+
+### `format_text`
+
+Formats every occurrence of some text inside a frame (or the whole document): apply a character style, or local formatting such as bold, italic, size, font, color, tracking.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `find` * | string | The text to format (exact, case-insensitive by default). |
+| `item` | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `regex` | boolean |  |
+| `caseSensitive` | boolean |  |
+| `characterStyle` | string |  |
+| `bold` | boolean |  |
+| `italic` | boolean |  |
+| `fontStyle` | string | Exact font style name, e.g. "Semibold Italic" (overrides bold/italic). |
+| `font` | string |  |
+| `size` | number |  |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `tracking` | number |  |
+| `underline` | boolean |  |
+| `capitalization` | `normal` \| `small-caps` \| `all-caps` |  |
+
+### `insert_page_number`
+
+Adds an automatic page-number marker to a text frame, typically a small frame on a master page (create it with add_text_frame using master).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `prefix` | string |  |
+| `suffix` | string |  |
+
+### `thread_text_frames`
+
+Links two text frames so text overflowing the first continues in the second. The second frame's own text is discarded.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `from` * | string | The item's name or id (see describe_document / list_items). |
+| `to` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+## Styles, swatches and fonts
+
+### `list_styles`
+
+Lists paragraph, character and object styles with their main settings.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `kind` | `paragraph` \| `character` \| `object` \| `all` |  |
+
+### `create_paragraph_style`
+
+Creates a paragraph style (font, size, leading, alignment, spacing, color…). Apply it with add_text_frame, set_text or apply_paragraph_style.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+| `basedOn` | string |  |
+| `nextStyle` | string |  |
+| `group` | string | Style group (folder) name. |
+| `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
+| `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
+| `leading` | number \| string | Line spacing in points, or "auto". |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
+| `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
+| `underline` | boolean |  |
+| `strikeThrough` | boolean |  |
+| `position` | `normal` \| `superscript` \| `subscript` |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
+| `alignment` | `left` \| `center` \| `right` \| `justify` \| `justify-all` \| `justify-center` \| `justify-right` \| `to-binding` \| `away-from-binding` |  |
+| `spaceBefore` | number | Points. |
+| `spaceAfter` | number |  |
+| `leftIndent` | number |  |
+| `rightIndent` | number |  |
+| `firstLineIndent` | number |  |
+| `hyphenate` | boolean |  |
+| `keepLinesTogether` | boolean |  |
+| `dropCapLines` | integer |  |
+| `dropCapCharacters` | integer |  |
+
+### `create_character_style`
+
+Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red). Apply it with format_text.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+| `basedOn` | string |  |
+| `group` | string |  |
+| `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
+| `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
+| `leading` | number \| string | Line spacing in points, or "auto". |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
+| `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
+| `underline` | boolean |  |
+| `strikeThrough` | boolean |  |
+| `position` | `normal` \| `superscript` \| `subscript` |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
+
+### `update_style`
+
+Changes settings of an existing paragraph or character style. Everything using the style updates automatically in InDesign.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `kind` * | `paragraph` \| `character` |  |
+| `style` * | string |  |
+| `basedOn` | string |  |
+| `nextStyle` | string |  |
+| `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
+| `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
+| `size` | number | Point size (0.1–1296, as in InDesign). |
+| `leading` | number \| string | Line spacing in points, or "auto". |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
+| `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
+| `underline` | boolean |  |
+| `strikeThrough` | boolean |  |
+| `position` | `normal` \| `superscript` \| `subscript` |  |
+| `horizontalScale` | number | Percent (1–1000). |
+| `baselineShift` | number | Points. |
+| `alignment` | `left` \| `center` \| `right` \| `justify` \| `justify-all` \| `justify-center` \| `justify-right` \| `to-binding` \| `away-from-binding` |  |
+| `spaceBefore` | number | Points. |
+| `spaceAfter` | number |  |
+| `leftIndent` | number |  |
+| `rightIndent` | number |  |
+| `firstLineIndent` | number |  |
+| `hyphenate` | boolean |  |
+| `keepLinesTogether` | boolean |  |
+| `dropCapLines` | integer |  |
+| `dropCapCharacters` | integer |  |
+
+### `delete_style`
+
+Deletes a paragraph or character style; text using it gets the replacement style (default: basic/none).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `kind` * | `paragraph` \| `character` |  |
+| `style` * | string |  |
+| `replaceWith` | string |  |
+
+### `list_swatches`
+
+Lists color swatches with their values and an approximate hex color.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `create_swatch`
+
+Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for print).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` | string | Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0"). |
+| `color` | string | "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". |
+| `cmyk` | array | Percentages 0-100. |
+| `rgb` | array | Values 0-255. |
+| `spot` | boolean |  |
+
+### `list_fonts`
+
+Lists the fonts the document refers to. Fonts must be installed on the computer that opens the document in InDesign.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+## Pictures
+
+### `place_image`
+
+Places an existing image file (PNG, JPEG, TIFF, PSD, PDF…) on a page: either in a new frame at x/y with width (height optional, keeps proportions) or into an existing frame. The file stays linked, like File > Place in InDesign; keep it next to the document (a Links folder is ideal).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `image` * | string | Path to the image file. |
+| `page` | integer \| string | Page for a new frame (default 1). |
+| `master` | string | Place on this master page instead. |
+| `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `frame` | string | Put the image into this existing frame instead of creating a new one. |
+| `name` | string |  |
+| `layer` | string |  |
+| `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture fits the frame: fill (default, fills the frame proportionally and crops), fit (whole picture visible), stretch, center (100 %), frame-to-content (frame takes the picture's size). |
+
+### `set_image_fit`
+
+Changes how a placed picture fits its frame (fill, fit, stretch, center, frame-to-content).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `fit` * | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` |  |
+
+### `generate_image`
+
+Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Costs money per image, so confirm the prompt with the user before generating many.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `prompt` * | string |  |
+| `size` | string | "square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". Default: matches the frame, else square. |
+| `quality` | `low` \| `medium` \| `high` \| `auto` | Higher quality costs more and takes longer. Default auto. |
+| `transparentBackground` | boolean | Produce a PNG with transparent background (logos, cut-outs). |
+| `model` | string | OpenAI image model (default gpt-image-2). Others: gpt-image-1.5, gpt-image-1-mini. |
+| `fileName` | string | File name for the saved image (without extension). Default: derived from the prompt. |
+| `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
+| `page` | integer \| string | Page for a new frame (default 1). |
+| `master` | string | Place on this master page instead. |
+| `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `frame` | string | Put the image into this existing frame instead of creating a new one. |
+| `name` | string |  |
+| `layer` | string |  |
+| `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture fits the frame: fill (default, fills the frame proportionally and crops), fit (whole picture visible), stretch, center (100 %), frame-to-content (frame takes the picture's size). |
+
+### `edit_image`
+
+Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `prompt` * | string |  |
+| `images` * | array | Source image paths, or names/ids of frames containing pictures. |
+| `mask` | string | Path to a PNG mask (transparent = area to edit). |
+| `size` | string | "square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". Default: matches the frame, else square. |
+| `quality` | `low` \| `medium` \| `high` \| `auto` | Higher quality costs more and takes longer. Default auto. |
+| `transparentBackground` | boolean | Produce a PNG with transparent background (logos, cut-outs). |
+| `model` | string | OpenAI image model (default gpt-image-2). Others: gpt-image-1.5, gpt-image-1-mini. |
+| `fileName` | string | File name for the saved image (without extension). Default: derived from the prompt. |
+| `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
+| `page` | integer \| string | Page for a new frame (default 1). |
+| `master` | string | Place on this master page instead. |
+| `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `frame` | string | Put the image into this existing frame instead of creating a new one. |
+| `name` | string |  |
+| `layer` | string |  |
+| `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture fits the frame: fill (default, fills the frame proportionally and crops), fit (whole picture visible), stretch, center (100 %), frame-to-content (frame takes the picture's size). |
+| `replaceInFrame` | boolean | When a source is a frame, put the result back into that frame (default true). |
+
+### `list_images`
+
+Lists every placed picture with its frame, file path, pixel size, scale and effective resolution (warns below 150 ppi for print).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+## Reference documents
+
+### `list_reference_documents`
+
+Lists the reference InDesign documents available (bundled with the server and from configured folders). Use them to reuse styles, swatches, master pages or whole pages instead of designing from scratch.
+
+| Parameter | Type | Description |
+|---|---|---|
+
+
+### `describe_reference`
+
+Full description of a reference document: pages and items, master pages, styles (with fonts and sizes), swatches and fonts.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `reference` * | string | Reference name (from list_reference_documents) or a path to an .idml file. |
+
+### `add_reference_folder`
+
+Registers a folder of .idml files as references for this session.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `folder` * | string |  |
+
+### `new_document_from_reference`
+
+Starts a new document from a reference: either a full copy (keepContent true) or its styles, swatches, masters and page setup with empty pages (default).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `reference` * | string |  |
+| `path` * | string | Where to save the new document. |
+| `keepContent` | boolean | Keep the reference's pages and content (default false = empty pages, same setup). |
+| `pages` | integer | Number of pages when not keeping content (default 1). |
+| `pageSize` | string |  |
+| `orientation` | `portrait` \| `landscape` |  |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `overwrite` | boolean |  |
+
+### `import_styles_from_reference`
+
+Copies paragraph/character/object styles, swatches and fonts from a reference document into the current document. By default everything; limit with the flags or `only` names.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `reference` * | string |  |
+| `paragraph` | boolean |  |
+| `character` | boolean |  |
+| `object` | boolean |  |
+| `swatches` | boolean |  |
+| `fonts` | boolean |  |
+| `only` | array | Only these style/swatch names. |
+| `conflict` | `skip` \| `overwrite` \| `rename` | What to do when a style with the same name exists (default skip). |
+
+### `copy_master_from_reference`
+
+Copies a master page (with its items, styles and swatches) from a reference document into the current document.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `reference` * | string |  |
+| `master` * | string | Master name in the reference, e.g. "A-Master". |
+| `prefix` | string |  |
+| `name` | string |  |
+
+### `copy_page_from_reference`
+
+Copies everything on a reference page onto a new page at the end of the current document (or onto an existing page), including the styles, swatches and master it needs. Linked images stay linked to their original files.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `reference` * | string |  |
+| `page` * | integer \| string | Page in the reference. |
+| `ontoPage` | integer \| string | Existing page to copy onto (default: a new page). |
+| `applyMaster` | boolean |  |
+
+## Previews
+
+### `preview_page`
+
+Renders a page to a PNG image and shows it, so you can check the layout. Uses Adobe InDesign itself when installed (exact), otherwise a built-in renderer with real fonts (very close: frames, colours, pictures and text positions match; fine typographic details may differ). Also saves the PNG next to the document.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `width` | integer | Image width in pixels (default 1200). |
+| `renderer` | `auto` \| `builtin` \| `indesign` | auto (default): use Adobe InDesign for a pixel-exact render if it is installed, otherwise the built-in renderer; builtin: always the built-in renderer; indesign: require InDesign. |
+| `showGuides` | boolean | Draw margin and column guides. |
+| `showFrameEdges` | boolean | Outline text and picture frames. |
+| `bleed` | boolean | Include the bleed area. |
+| `save` | boolean | Also write the PNG next to the document, in a .previews folder (default true). |
+
+### `preview_spread`
+
+Renders the whole spread (facing pages side by side) that contains the given page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `width` | integer | Image width in pixels (default 1200). |
+| `renderer` | `auto` \| `builtin` \| `indesign` | auto (default): use Adobe InDesign for a pixel-exact render if it is installed, otherwise the built-in renderer; builtin: always the built-in renderer; indesign: require InDesign. |
+| `showGuides` | boolean | Draw margin and column guides. |
+| `showFrameEdges` | boolean | Outline text and picture frames. |
+| `bleed` | boolean | Include the bleed area. |
+| `save` | boolean | Also write the PNG next to the document, in a .previews folder (default true). |
+
+### `preview_document`
+
+Renders every page as a thumbnail on one contact sheet.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `width` | integer |  |
+| `columns` | integer |  |
+| `showGuides` | boolean |  |
+
+### `preview_item`
+
+Renders a close-up of one item and its surroundings.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `width` | integer |  |
+| `showFrameEdges` | boolean |  |
+
+### `preview_capabilities`
+
+Reports whether Adobe InDesign is available for exact previews and which fonts the built-in renderer can use.
+
+| Parameter | Type | Description |
+|---|---|---|
+
+
+## Other
+
+### `add_guides`
+
+Adds ruler guides to a page: explicit horizontal/vertical positions (from the page top-left), or guides along the margins and column edges.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `horizontal` | array | Distances from the top of the page. |
+| `vertical` | array | Distances from the left edge of the page. |
+| `fromMargins` | boolean | Add guides on the four margins. |
+| `fromColumns` | boolean | Add guides on every column edge. |
+| `color` | string | Guide color name, e.g. Cyan, Magenta, Green. |
+
+### `create_object_style`
+
+Creates an object style: fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set. Apply it with apply_object_style.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+| `basedOn` | string |  |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `fillTint` | number |  |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number |  |
+| `strokeType` | string | Solid, Dashed, Dotted… |
+| `strokeAlignment` | `center` \| `inside` \| `outside` |  |
+| `cornerRadius` | number | Points. |
+| `cornerShape` | `rounded` \| `inverse-rounded` \| `bevel` \| `inset` \| `fancy` \| `none` |  |
+| `opacity` | number |  |
+| `paragraphStyle` | string | Paragraph style applied to text in frames using this style. |
+| `columns` | integer |  |
+| `gutter` | number |  |
+| `inset` | number |  |
+| `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
+| `textWrap` | `none` \| `bounding-box` |  |
+| `textWrapOffset` | number |  |
+
+### `update_object_style`
+
+Changes an existing object style. Items using it follow automatically in InDesign.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number |  |
+| `cornerRadius` | number |  |
+| `cornerShape` | `rounded` \| `inverse-rounded` \| `bevel` \| `inset` \| `fancy` \| `none` |  |
+| `opacity` | number |  |
+| `paragraphStyle` | string |  |
+| `columns` | integer |  |
+| `inset` | number |  |
+| `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
+| `textWrap` | `none` \| `bounding-box` |  |
+
+### `create_gradient`
+
+Creates a linear or radial gradient swatch from two or more colours. Use it as a fill like any swatch.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+| `type` | `linear` \| `radial` |  |
+| `stops` * | array | Colours from start to end; locations default to an even spread. |
+
+### `set_gradient_geometry`
+
+Sets the angle and length of a gradient fill on an item (0° = left to right, 90° = bottom to top).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `angle` | number |  |
+| `length` | number |  |
+
+### `add_polygon`
+
+Adds a regular polygon (triangle, pentagon, hexagon…) or a star inside the given box.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). |
+| `master` | string | Put the item on this master page instead. |
+| `x` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `sides` | integer | Number of sides (or star points). |
+| `starInset` | number | Star point depth in percent: 0 = polygon, 50 = classic star. |
+| `name` | string | A name to refer to the item later. |
+| `layer` | string |  |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number |  |
+| `rotation` | number |  |
+
+### `add_path`
+
+Draws a path through a list of points (straight or smooth), open like a line or closed like a shape.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` | integer \| string | Page to place the item on (default 1). |
+| `master` | string | Put the item on this master page instead. |
+| `points` * | array | Points measured from the top-left corner of the page. |
+| `closed` | boolean | Close the path into a shape (default false). |
+| `smooth` | boolean | Curve through the points instead of straight segments. |
+| `name` | string | A name to refer to the item later. |
+| `layer` | string |  |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `strokeWeight` | number |  |
+| `rotation` | number |  |
+
+### `group_items`
+
+Groups several items on the same page so they can be moved, copied and styled together.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `items` * | array |  |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `name` | string |  |
+
+### `ungroup_items`
+
+Dissolves a group; its items stay where they are.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `group` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `step_and_repeat`
+
+Copies an item into a grid, like InDesign's Step and Repeat — useful for labels, tickets or a photo grid.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `rows` | integer |  |
+| `columns` | integer |  |
+| `offsetX` | number,string | Horizontal distance between copies (default: the item width plus a small gap). |
+| `offsetY` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `name` | string | Base name for the copies. |
+
+### `apply_object_style`
+
+Applies an object style to an item (fill, stroke, corners, text frame options and paragraph style in one go).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `style` * | string |  |
+
+### `move_page`
+
+Moves a page to another position. Spreads are rebuilt the way InDesign does it, and everything on the page moves with it.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` * | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `to` * | integer | New position (1 = first page). |
+
+### `duplicate_page`
+
+Copies a page with everything on it and inserts the copy after the original (or at a chosen position).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` * | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `after` | integer | Insert after this page number (0 = at the front). |
+
+### `reorder_pages`
+
+Puts the pages in the given order, e.g. [3,1,2].
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `order` * | array | Every page, in the new order. |
+
+### `override_master_item`
+
+Makes an item that comes from the master page editable on one page (like Cmd/Ctrl+Shift-clicking it in InDesign). Use it to change a headline or logo on a single page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `page` * | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `item` * | string | Name or id of the item on the master page. |
+
+### `delete_layer`
+
+Deletes a layer; its items move to another layer, or are deleted with it.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `layer` * | string |  |
+| `moveItemsTo` | string |  |
+| `deleteItems` | boolean |  |
+
+### `reorder_layer`
+
+Moves a layer up or down the stack. Position 1 is the top-most layer.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `layer` * | string |  |
+| `position` * | integer |  |
+
+### `set_active_layer`
+
+Chooses the layer that new items are created on.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `layer` * | string |  |
+
+### `add_table`
+
+Puts a table in a text frame (creating the frame when x/y/width/height are given). Fill it with `data` row by row; the first rows can be header rows that repeat when the table flows.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` | string | Existing text frame to put the table in. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `height` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `name` | string | Name for the new frame. |
+| `rows` | integer | Number of rows (default: the number of data rows). |
+| `columns` | integer |  |
+| `data` | array | Cell text, row by row. **bold** and *italic* work. |
+| `headerRows` | integer |  |
+| `footerRows` | integer |  |
+| `columnWidths` | array | Column widths; one value applies to all. |
+| `rowHeights` | array |  |
+| `paragraphStyle` | string |  |
+| `headerParagraphStyle` | string |  |
+| `cellInset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `strokeWeight` | number | Weight of the lines between cells, in points. |
+| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `borderWeight` | number |  |
+| `borderColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `headerFill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `alternatingFill` | string | Fill for every other body row (banding). |
+
+### `get_table`
+
+Returns the contents of a table as rows of text, with its size and header rows.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `set_table_cells`
+
+Writes text into table cells: one cell, or a block of cells starting at a position.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `row` * | integer | Row number, 1 = first row (header rows count). |
+| `column` * | integer |  |
+| `text` | string | Text for a single cell. |
+| `data` | array | A block of cells starting at row/column. |
+| `paragraphStyle` | string |  |
+
+### `style_table`
+
+Colours cells, changes their strokes, insets, vertical alignment or paragraph style — the whole table, whole rows/columns, or a block.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `rows` | array | Row numbers to style (1 = first). |
+| `columns` | array |  |
+| `fromRow` | integer |  |
+| `fromColumn` | integer |  |
+| `rowSpan` | integer |  |
+| `columnSpan` | integer |  |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `fillTint` | number |  |
+| `strokeWeight` | number |  |
+| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches. |
+| `inset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `verticalAlignment` | `top` \| `center` \| `bottom` |  |
+| `paragraphStyle` | string |  |
+
+### `edit_table_structure`
+
+Inserts or deletes rows and columns, sets column widths and row heights, or merges a block of cells.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `action` * | `insert-rows` \| `delete-rows` \| `insert-columns` \| `delete-columns` \| `merge` \| `column-widths` \| `row-heights` |  |
+| `at` | integer | Row/column number to insert before or delete (1 = first). |
+| `count` | integer | How many rows/columns (default 1). |
+| `rowSpan` | integer | For merge: how many rows to join. |
+| `columnSpan` | integer |  |
+| `widths` | array |  |
+| `heights` | array |  |
+
+### `merge_table_cells`
+
+Joins a rectangular block of cells into one, keeping the top-left cell's text.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `frame` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `row` * | integer |  |
+| `column` * | integer |  |
+| `rowSpan` | integer |  |
+| `columnSpan` | integer |  |
+
+### `set_list_options`
+
+Turns a paragraph style into a bulleted or numbered list (or switches the list off). Apply the style to paragraphs as usual; InDesign then draws the bullets or numbers.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string | Paragraph style to change. |
+| `kind` * | `none` \| `bullet` \| `number` |  |
+| `bulletCharacter` | string | Default •. Try –, ▪, ●, ✓. |
+| `numberStyle` | `arabic` \| `upper-roman` \| `lower-roman` \| `upper-letters` \| `lower-letters` |  |
+| `numberFormat` | string | Pattern, e.g. "^#." for 1. or "^#)" for 1). ^# is the number, ^t a tab. |
+| `startAt` | integer |  |
+| `textAfter` | string | What follows the bullet/number, default a tab (^t). |
+| `indent` | number,string | Left indent of the paragraph. |
+| `bulletIndent` | number,string | How far the bullet/number hangs into the margin. |
+| `characterStyle` | string | Character style for the bullet/number itself. |
+| `font` | string | Font for the bullet character. |
+
+### `set_tab_stops`
+
+Sets the tab stops of a paragraph style — useful for price lists and tables of contents (a right tab with a dotted leader).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `stops` * | array | An empty list removes all tab stops. |
+
+### `add_hyperlink`
+
+Turns text into a hyperlink to a web address. The link survives PDF and EPUB export from InDesign.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | Text frame containing the text. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `text` * | string | The exact text to link. |
+| `url` * | string | Target address, e.g. https://example.com |
+| `all` | boolean | Link every occurrence (default: only the first). |
+| `characterStyle` | string | Character style for the link text, e.g. a blue underlined style. |
+| `name` | string |  |
+
+### `list_hyperlinks`
+
+Lists the hyperlinks in the document with their targets.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `set_page_numbering`
+
+Controls how pages are numbered: where a section starts, the first number, the style (1, i, I, a, A) and a section prefix. Combine with insert_page_number on a master page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `startPage` | integer | Page where this section starts (default 1). |
+| `pageNumberStart` | integer | Number the first page of the section gets. |
+| `continueNumbering` | boolean | Continue from the previous section instead. |
+| `style` | `arabic` \| `upper-roman` \| `lower-roman` \| `upper-letters` \| `lower-letters` |  |
+| `prefix` | string | Section prefix, e.g. "A-". |
+| `includePrefix` | boolean | Show the prefix in page numbers. |
+| `marker` | string | Section marker text (insert it with a text variable). |
+
+### `anchor_item_in_text`
+
+Moves an item into a story so it flows with the text (an anchored object in InDesign): an icon in a sentence, or a picture that stays with its paragraph.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item to anchor. |
+| `intoFrame` * | string | The text frame whose story it should flow with. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `afterText` | string | Put it at this text; otherwise at the end of the story. |
+| `position` | `inline` \| `above-line` \| `custom` |  |
+| `yOffset` | number,string | Vertical offset from the baseline. |
+| `xOffset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
+| `alignment` | `left` \| `center` \| `right` |  |
+
+### `insert_special_characters`
+
+Replaces placeholders in a text frame with typographic characters. Available: em-dash, en-dash, bullet, ellipsis, copyright, registered, trademark, section, paragraph, degree, euro, pound, yen, non-breaking-space, thin-space, hair-space, en-space, em-space, forced-line-break, discretionary-hyphen, non-breaking-hyphen, zero-width-space, right-quote, left-quote, right-double-quote, left-double-quote. Write them as <em-dash>, <bullet>, <non-breaking-space> in your text.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The item's name or id (see describe_document / list_items). |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+
+### `create_text_variable`
+
+Makes a text variable: a running header that repeats the current heading, the date, the file name, the chapter number, the last page number, or a piece of custom text you can change in one place. Put it into a frame with insert_text_variable, usually on a master page.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string | What to call it, e.g. "Running head". |
+| `kind` * | `custom-text` \| `file-name` \| `last-page-number` \| `chapter-number` \| `creation-date` \| `modification-date` \| `output-date` \| `running-header-paragraph` \| `running-header-character` |  |
+| `text` | string | The text, for a custom-text variable. |
+| `format` | string | Date pattern for the date variables, e.g. "d MMMM yyyy" or "dd/MM/yyyy". |
+| `style` | string | The style a running header follows, e.g. the "Heading 1" paragraph style. |
+| `use` | `first` \| `last` | Which match on the page a running header takes (default the first). |
+| `textBefore` | string |  |
+| `textAfter` | string |  |
+
+### `list_text_variables`
+
+Lists the document's text variables and what each one shows.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `insert_text_variable`
+
+Puts a text variable into a text frame — in place of some text you name, or at the end of the story. On a master page this gives every page a running header or a date that updates itself.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `item` * | string | The text frame. |
+| `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
+| `variable` * | string | Name of the variable (see list_text_variables). |
+| `replaceText` | string | Text to replace with the variable. |
+| `characterStyle` | string |  |
+
+### `delete_text_variable`
+
+Removes a text variable from the document.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `name` * | string |  |
+
+### `set_nested_styles`
+
+Styles the start of every paragraph automatically: "the first two words in Bold", "everything up to the first colon in Small caps". InDesign calls these nested styles; they follow the paragraph style, so the text stays editable.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string | The paragraph style to change. |
+| `nested` * | array | In order, from the start of the paragraph. An empty list removes them. |
+
+### `set_line_styles`
+
+Styles whole lines of every paragraph in a style — "the first line in small caps", for instance.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `lines` * | array |  |
+
+### `set_grep_styles`
+
+Styles every match of a pattern inside the paragraphs of a style — phone numbers in bold, acronyms in small caps, prices in a different colour. Uses InDesign's GREP (regular expression) syntax.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `style` * | string |  |
+| `grep` * | array | An empty list removes the GREP styles. |
+
+### `list_links`
+
+Lists every placed picture with its file, page, print resolution and whether the file is still there — InDesign’s Links panel.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `relink_image`
+
+Points a placed picture at a different file, keeping the frame, its position and its fitting. Also fixes a missing link.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `image` * | string | Which picture: the frame name or id, or the current file name (see list_links). |
+| `newFile` * | string | Path of the image file to link to. |
+| `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture sits in its frame; fill (default) crops to fill it. |
+
+### `embed_images`
+
+Copies picture files into the document so it can be sent on its own. The file grows; use unembed_images or package_document if you would rather keep the pictures as separate files.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `image` | string | One picture (frame name, id or file name). Omit for all. |
+
+### `unembed_images`
+
+Writes embedded pictures into a Links folder next to the document and links to them again.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `image` | string | One picture. Omit for all embedded pictures. |
+| `folder` | string | Where to write them (default: a Links folder next to the document). |
+
+### `preflight_document`
+
+Checks the document the way InDesign’s Preflight panel does: overset text, missing or low-resolution pictures, missing fonts, RGB colours in print work, hairlines, objects running off the page without bleed and empty frames.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `intent` | `print` \| `screen` | print (default) checks CMYK and resolution; screen is more relaxed. |
+| `minPpi` | integer | Minimum picture resolution (default 250 for print). |
+
+### `package_document`
+
+Collects the document, copies of every linked picture and a font/preflight report into one folder, ready to hand over — InDesign’s File > Package.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `folder` * | string | Folder to create the package in. |
+| `copyFonts` | boolean | Also copy the font files used (check your font licence first). Default false. |
+
+### `list_merge_fields`
+
+Shows the <<Field>> placeholders in the document — in text, and as picture-frame names — so you know what columns the data file needs.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+
+### `data_merge`
+
+Fills a template page once per row of a CSV or JSON file, adding a page for every row — for name badges, certificates, price lists or personalised letters. Write <<Field>> in the text; name a picture frame <<Field>> to place a picture whose path is in that column.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `dataFile` * | string | Path to a .csv, .tsv or .json file. The first CSV row holds the column names. |
+| `templatePage` | integer \| string | Page holding the placeholders (default 1). |
+| `separateDocuments` | boolean | Write one document per row instead of adding pages (default false). |
+| `outputFolder` | string | Where to write the separate documents. |
+| `nameFrom` | string | Column to name the separate documents after. |
+| `limit` | integer | Only merge the first N rows (useful for a test run). |
+| `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture sits in its frame; fill (default) crops to fill it. |
+
+### `export_document`
+
+Exports the document for sending or printing. With Adobe InDesign installed the export is done by InDesign itself (press-ready PDF); otherwise the built-in renderer writes a vector PDF or images that are very close but not colour-managed.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `format` * | `pdf` \| `png` \| `jpeg` | pdf for sending or printing, png/jpeg for the web. |
+| `outputFile` | string | Where to write it (default: next to the document). Several pages become file-1, file-2, … |
+| `pages` | array | Pages to export, e.g. [1,2] or ["1-4"]. All pages by default. |
+| `spreads` | boolean | Export facing pages together as spreads. |
+| `dpi` | integer | Resolution for PNG/JPEG (default 150). |
+| `quality` | integer | JPEG quality (default 90). |
+| `bleed` | boolean | Include the bleed area. |
+| `renderer` | `auto` \| `builtin` \| `indesign` |  |
+
+# Prompts
+
+Prompts appear as slash commands in Claude Desktop.
+
+- **design-from-brief** — Create a flyer, poster, brochure or other InDesign document from a short brief. Arguments: `brief`*, `format`, `file`.
+- **match-reference-look** — Build a new document that follows the styles, colors and masters of a reference document. Arguments: `reference`*, `content`*, `file`.
+- **review-layout** — Inspect a document page by page and suggest improvements. Arguments: `document`*.

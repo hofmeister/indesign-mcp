@@ -1,0 +1,50 @@
+{
+  "name": "indesign-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for creating and editing Adobe InDesign documents (IDML) with OpenAI image generation and page previews",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "indesign-mcp": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "bun test",
+    "build": "bun run gen && bun run scripts/build.ts",
+    "build:all": "bun run gen && bun run scripts/build.ts --all",
+    "smoke": "bun run test/smoke.ts",
+    "gen": "bun run scripts/gen-assets.ts",
+    "gen:check": "bun run scripts/gen-assets.ts --check",
+    "docs": "bun run scripts/gen-docs.ts",
+    "bundles": "bun run scripts/build-mcpb.ts --dist dist --out dist/bundles",
+    "example": "bun run examples/presentation.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "@xmldom/xmldom": "^0.9.12",
+    "fflate": "^0.8.3",
+    "fontkit": "^2.0.4",
+    "hyphen": "^1.14.1",
+    "image-size": "^2.0.2",
+    "jpeg-js": "^0.4.4",
+    "libxml2-wasm": "^0.7.1",
+    "openai": "^7.10.0",
+    "pngjs": "^7.0.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@types/bun": "^1.4.1",
+    "@types/fontkit": "^2.0.9",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^7.2.0",
+    "typescript": "^7.0.2"
+  }
+}
