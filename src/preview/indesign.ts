@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
+import { log } from '../log.ts';
 
 export interface InDesignInstall {
   platform: 'darwin' | 'win32';
@@ -59,8 +60,18 @@ function exportScript(
   return `
 (function () {
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
+  var pageReports = [];
+  // A document left open by an earlier run would be re-exported from its stale in-memory copy.
+  for (var d = app.documents.length - 1; d >= 0; d--) {
+    try {
+      if (app.documents[d].fullName && String(app.documents[d].fullName) === ${js(idmlPath)})
+        app.documents[d].close(SaveOptions.NO);
+    } catch (e) {}
+  }
   var doc = app.open(File(${js(idmlPath)}), false);
   try {
+    var documentPages = doc.pages.length;
+    var spreadCount = doc.spreads.length;
     var prefs = app.pngExportPreferences;
     prefs.exportResolution = ${Math.max(36, Math.min(2400, Math.round(dpi)))};
     prefs.pngQuality = PNGQualityEnum.MAXIMUM;
@@ -75,11 +86,25 @@ function exportScript(
       var p = doc.pages[pages[i] - 1];
       if (!p) continue;
       prefs.pngExportRange = ExportRangeOrAllPages.EXPORT_RANGE;
-      prefs.pageString = p.name;
+      // Address the page by absolute position. A page *name* carries the section prefix and
+      // numbering style, so "3" can mean another page — or no page at all — once a section is set.
+      prefs.pageString = "+" + pages[i];
+      var own = 0, inherited = 0;
+      try { own = p.pageItems.length; } catch (e) {}
+      try { inherited = p.masterPageItems ? p.masterPageItems.length : 0; } catch (e) {}
+      pageReports.push('{"page":' + pages[i] + ',"name":"' + String(p.name).replace(/"/g, "'") +
+        '","items":' + own + ',"masterItems":' + inherited + '}');
       doc.exportFile(ExportFormat.PNG_FORMAT, File(${js(outDir)} + "/page-" + pages[i] + ".png"), false);
     }
   } finally {
     doc.close(SaveOptions.NO);
+    try {
+      var f = File(${js(outDir)} + "/report.json");
+      f.open("w");
+      f.write('{"documentPages":' + documentPages + ',"spreads":' + spreadCount +
+        ',"pages":[' + pageReports.join(',') + ']}');
+      f.close();
+    } catch (e) {}
   }
 })();
 `;
@@ -115,9 +140,23 @@ function runCommand(
   });
 }
 
+export interface InDesignPageReport {
+  page: number;
+  /** The page name InDesign gave it — carries any section prefix. */
+  name: string;
+  /** Items on the page itself. */
+  items: number;
+  /** Items it inherits from its master. */
+  masterItems: number;
+}
+
 export interface InDesignRenderResult {
   pngs: Map<number, Uint8Array>;
   app: string;
+  /** What InDesign saw when it opened the file. Empty when it could not be read back. */
+  report?: { documentPages: number; spreads: number; pages: InDesignPageReport[] };
+  /** Things worth telling the caller about the export, e.g. a page that came out bare. */
+  warnings: string[];
 }
 
 /**
@@ -161,7 +200,30 @@ export async function renderWithInDesign(
       if (hit) pngs.set(p, new Uint8Array(readFileSync(hit)));
     }
     if (!pngs.size) throw new Error('InDesign exported no images');
-    return { pngs, app: install.name };
+
+    // Read back what InDesign actually opened. When a page renders with nothing but its master
+    // items, this is the difference between a mystery and a report you can act on.
+    let report: InDesignRenderResult['report'];
+    const warnings: string[] = [];
+    try {
+      report = JSON.parse(readFileSync(join(outDir, 'report.json'), 'utf8'));
+    } catch {
+      // no report; not worth failing the render over
+    }
+    if (report) {
+      log.info(
+        `InDesign opened ${idmlPath}: ${report.documentPages} page(s), ${report.spreads} spread(s); ` +
+          report.pages
+            .map((p) => `p${p.page} "${p.name}" ${p.items} item(s), ${p.masterItems} from master`)
+            .join('; '),
+      );
+      for (const p of report.pages)
+        if (p.items === 0 && p.masterItems > 0)
+          warnings.push(
+            `InDesign found no items of its own on page ${p.page} ("${p.name}") — only ${p.masterItems} inherited from its master. The render will show the master page alone.`,
+          );
+    }
+    return { pngs, app: install.name, report, warnings };
   } finally {
     try {
       rmSync(outDir, { recursive: true, force: true });

@@ -54,6 +54,8 @@ export interface ItemSummary {
   fill?: string;
   stroke?: string;
   text?: string;
+  /** Tables in the frame's story, when it holds any. */
+  tables?: number;
   image?: string;
   overset?: boolean;
   children?: ItemSummary[];
@@ -74,6 +76,7 @@ export function itemSummary(item: ItemInfo, unit: Unit, layers: Map<string, stri
   if (item.stroke && item.stroke !== 'none' && item.strokeWeight > 0)
     s.stroke = `${item.stroke} ${item.strokeWeight}pt`;
   if (item.text !== undefined) s.text = item.text.length > 160 ? `${item.text.slice(0, 157)}…` : item.text;
+  if (item.tables) s.tables = item.tables;
   if (item.imagePath) s.image = item.imagePath;
   if (item.children) s.children = item.children.map((c) => itemSummary(c, unit, layers));
   return s;

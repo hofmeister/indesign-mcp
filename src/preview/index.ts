@@ -56,12 +56,17 @@ async function rasterize(
   };
 }
 
+interface ExactRender {
+  pngs: Map<number, Uint8Array>;
+  warnings: string[];
+}
+
 async function tryInDesign(
   doc: IdmlDocument,
   pages: number[],
   options: PreviewOptions,
   spread: boolean,
-): Promise<Map<number, Uint8Array> | undefined> {
+): Promise<ExactRender | undefined> {
   const choice = options.renderer ?? 'auto';
   if (choice === 'builtin' || !doc.path) return undefined;
   if (!detectInDesign()) {
@@ -72,7 +77,7 @@ async function tryInDesign(
   try {
     const dpi = options.dpi ?? (options.width ? Math.round((options.width / 8.27) * 1) : 150);
     const r = await renderWithInDesign(doc.path, pages, { dpi, spread });
-    return r.pngs;
+    return { pngs: r.pngs, warnings: r.warnings };
   } catch (e) {
     if (choice === 'indesign') throw e;
     return undefined;
@@ -87,15 +92,15 @@ export async function previewPage(
   const pageNumber = typeof pageRef === 'number' ? pageRef : Number(pageRef) || 1;
   const exact = await tryInDesign(doc, [pageNumber], options, false);
   let result: PreviewResult;
-  if (exact?.get(pageNumber)) {
-    const png = exact.get(pageNumber)!;
+  if (exact?.pngs.get(pageNumber)) {
+    const png = exact.pngs.get(pageNumber)!;
     const dims = pngDims(png);
     result = {
       png,
       width: dims.width,
       height: dims.height,
       renderer: 'indesign',
-      warnings: [],
+      warnings: exact.warnings,
       substitutions: {},
     };
   } else {
@@ -117,15 +122,15 @@ export async function previewSpread(
   const pageNumber = typeof pageRef === 'number' ? pageRef : Number(pageRef) || 1;
   const exact = await tryInDesign(doc, [pageNumber], options, true);
   let result: PreviewResult;
-  if (exact?.get(pageNumber)) {
-    const png = exact.get(pageNumber)!;
+  if (exact?.pngs.get(pageNumber)) {
+    const png = exact.pngs.get(pageNumber)!;
     const dims = pngDims(png);
     result = {
       png,
       width: dims.width,
       height: dims.height,
       renderer: 'indesign',
-      warnings: [],
+      warnings: exact.warnings,
       substitutions: {},
     };
   } else {
@@ -169,7 +174,9 @@ export async function previewDocument(
   const substitutions: Record<string, string> = {};
   const tiles: { svg: string; w: number; h: number }[] = [];
   for (const p of pages) {
-    const r = renderPageSvg(doc, p.index, options);
+    // Each tile gets its own id namespace: the tiles are inlined into one SVG below, and duplicate
+    // ids would make every glyph `use` resolve to the first page's outlines.
+    const r = renderPageSvg(doc, p.index, { ...options, idPrefix: `p${p.index}-` });
     warnings.push(...r.warnings);
     Object.assign(substitutions, r.substitutions);
     tiles.push({ svg: r.svg, w: r.width, h: r.height });

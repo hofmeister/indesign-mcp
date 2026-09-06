@@ -12,7 +12,16 @@ import { type GeneratedImage, type ImageProvider, pickSize } from '../images/pro
 import { thumbnailBase64 } from '../images/thumbnail.ts';
 import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
-import { documentParam, itemParam, lengthParam, ok, pageParam, run, type ToolResult } from './shared.ts';
+import {
+  documentParam,
+  itemParam,
+  lengthParam,
+  ok,
+  pageParam,
+  run,
+  type ToolResult,
+  toolInput,
+} from './shared.ts';
 
 const fitParam = z
   .enum(['fill', 'fit', 'stretch', 'center', 'frame-to-content'])
@@ -138,7 +147,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       title: 'Place image',
       description:
         'Places an existing image file (PNG, JPEG, TIFF, PSD, PDF…) on a page: either in a new frame at x/y with width (height optional, keeps proportions) or into an existing frame. The file stays linked, like File > Place in InDesign; keep it next to the document (a Links folder is ideal).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         image: z.string().describe('Path to the image file.'),
         ...targetParams,
@@ -169,7 +178,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       title: 'Fit image',
       description:
         'Changes how a placed picture fits its frame (fill, fit, stretch, center, frame-to-content).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         frame: itemParam,
         page: pageParam.optional(),
@@ -192,7 +201,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       title: 'Generate image (AI)',
       description:
         "Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Costs money per image, so confirm the prompt with the user before generating many.",
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         prompt: z.string().min(3),
         ...generationParams,
@@ -255,7 +264,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       title: 'Edit image (AI)',
       description:
         'Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         prompt: z.string().min(3),
         images: z
@@ -353,7 +362,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       title: 'List placed images',
       description:
         'Lists every placed picture with its frame, file path, pixel size, scale and effective resolution (warns below 150 ppi for print).',
-      inputSchema: z.strictObject({ document: documentParam, page: pageParam.optional() }),
+      inputSchema: toolInput({ document: documentParam, page: pageParam.optional() }),
       annotations: { readOnlyHint: true },
     },
     async ({ document, page }) =>

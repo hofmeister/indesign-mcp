@@ -28,6 +28,7 @@ import {
   removeItemElement,
 } from './pages.ts';
 import { BASIC_PARAGRAPH_STYLE, createStory, parseInlineMarkup, readStoryPlainText } from './stories.ts';
+import { tablesIn } from './tables.ts';
 import {
   allElements,
   attr,
@@ -67,6 +68,8 @@ export interface ItemInfo {
   layer: string | undefined;
   storyId: string | undefined;
   text: string | undefined;
+  /** Number of tables in the frame's story. A frame holding only a table has no `text`. */
+  tables: number;
   imagePath: string | undefined;
   fill: string | undefined;
   stroke: string | undefined;
@@ -159,9 +162,13 @@ export function itemInfo(
   const type = classify(el);
   const storyId = el.tagName === 'TextFrame' ? attr(el, 'ParentStory') : undefined;
   let text: string | undefined;
+  let tables = 0;
   if (storyId) {
     const story = doc.story(storyId);
-    if (story) text = readStoryPlainText(story);
+    if (story) {
+      text = readStoryPlainText(story);
+      tables = tablesIn(story).length;
+    }
   }
   const uri = linkUri(el);
   const info: ItemInfo = {
@@ -180,6 +187,7 @@ export function itemInfo(
     layer: attr(el, 'ItemLayer'),
     storyId,
     text,
+    tables,
     imagePath: uri ? linkUriToPath(uri) : undefined,
     fill: swatchDisplay(attr(el, 'FillColor')),
     stroke: swatchDisplay(attr(el, 'StrokeColor')),

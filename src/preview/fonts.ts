@@ -121,12 +121,14 @@ export class FontCatalog {
       } & FontFace;
       const fonts = parsed.fonts ? parsed.fonts : [parsed];
       fonts.forEach((f, index) => {
-        const family = (f.familyName ?? basename(path, extname(path))).trim();
-        const style = (f.subfamilyName ?? 'Regular').trim();
+        const family = (
+          typeof f.familyName === 'string' ? f.familyName : basename(path, extname(path))
+        ).trim();
+        const style = (typeof f.subfamilyName === 'string' ? f.subfamilyName : 'Regular').trim();
         this.faces.push({
           family,
           style,
-          postscriptName: f.postscriptName ?? '',
+          postscriptName: typeof f.postscriptName === 'string' ? f.postscriptName : '',
           path,
           index,
           weight: weightFromStyle(style),

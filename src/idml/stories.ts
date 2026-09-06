@@ -495,9 +495,19 @@ export function appendPageNumberMarker(
     psr = xml.createElement('ParagraphStyleRange');
     psr.setAttribute('AppliedParagraphStyle', options.paragraphStyle ?? BASIC_PARAGRAPH_STYLE);
     insertAfter(story, psr);
+  } else if (options.paragraphStyle) {
+    psr.setAttribute('AppliedParagraphStyle', options.paragraphStyle);
   }
-  const csr = xml.createElement('CharacterStyleRange');
-  csr.setAttribute('AppliedCharacterStyle', NO_CHARACTER_STYLE);
+  // Match the formatting of the text already in the paragraph. Starting from a bare
+  // CharacterStyleRange would fall back to [Basic Paragraph] — a serif page number next to a sans
+  // footer, and a font the document never asked for dragged into its font list.
+  const previous = children(psr, 'CharacterStyleRange').at(-1);
+  const csr = previous ? (previous.cloneNode(true) as Element) : xml.createElement('CharacterStyleRange');
+  // Keep <Properties> (AppliedFont and friends); drop only the text it used to hold.
+  if (previous)
+    for (const c of children(csr))
+      if (c.tagName === 'Content' || c.tagName === 'Br') removeElement(c);
+      else csr.setAttribute('AppliedCharacterStyle', NO_CHARACTER_STYLE);
   const content = xml.createElement('Content');
   if (options.prefix) content.appendChild(xml.createTextNode(options.prefix));
   content.appendChild(xml.createProcessingInstruction('ACE', '18'));

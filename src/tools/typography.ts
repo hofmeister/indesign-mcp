@@ -27,7 +27,7 @@ import {
 } from '../idml/variables.ts';
 import { attr, type Element } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
-import { documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
+import { documentParam, itemParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 function storyOf(doc: IdmlDocument, item: string, page?: number | string): Element {
   const found = findItem(doc, item, page);
@@ -45,7 +45,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       title: 'Bullets and numbering',
       description:
         'Turns a paragraph style into a bulleted or numbered list (or switches the list off). Apply the style to paragraphs as usual; InDesign then draws the bullets or numbers.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string().describe('Paragraph style to change.'),
         kind: z.enum(['none', 'bullet', 'number']),
@@ -96,7 +96,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       title: 'Tab stops',
       description:
         'Sets the tab stops of a paragraph style — useful for price lists and tables of contents (a right tab with a dotted leader).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string(),
         stops: z
@@ -140,7 +140,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       title: 'Add hyperlink',
       description:
         'Turns text into a hyperlink to a web address. The link survives PDF and EPUB export from InDesign.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam.describe('Text frame containing the text.'),
         page: pageParam.optional(),
@@ -173,7 +173,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
     {
       title: 'List hyperlinks',
       description: 'Lists the hyperlinks in the document with their targets.',
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -189,7 +189,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       title: 'Page numbering and sections',
       description:
         'Controls how pages are numbered: where a section starts, the first number, the style (1, i, I, a, A) and a section prefix. Combine with insert_page_number on a master page.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         startPage: z.number().int().min(1).optional().describe('Page where this section starts (default 1).'),
         pageNumberStart: z
@@ -224,7 +224,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       title: 'Anchor an item in text',
       description:
         'Moves an item into a story so it flows with the text (an anchored object in InDesign): an icon in a sentence, or a picture that stays with its paragraph.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam.describe('The item to anchor.'),
         intoFrame: itemParam.describe('The text frame whose story it should flow with.'),
@@ -258,7 +258,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
     {
       title: 'Insert special characters',
       description: `Replaces placeholders in a text frame with typographic characters. Available: ${Object.keys(SPECIAL_CHARACTERS).join(', ')}. Write them as <em-dash>, <bullet>, <non-breaking-space> in your text.`,
-      inputSchema: z.strictObject({ document: documentParam, item: itemParam, page: pageParam.optional() }),
+      inputSchema: toolInput({ document: documentParam, item: itemParam, page: pageParam.optional() }),
     },
     async (args) =>
       run(() => {
@@ -286,7 +286,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       title: 'Create a text variable',
       description:
         'Makes a text variable: a running header that repeats the current heading, the date, the file name, the chapter number, the last page number, or a piece of custom text you can change in one place. Put it into a frame with insert_text_variable, usually on a master page.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string().describe('What to call it, e.g. "Running head".'),
         kind: z.enum([
@@ -334,7 +334,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
     {
       title: 'List text variables',
       description: "Lists the document's text variables and what each one shows.",
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -354,7 +354,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       title: 'Insert a text variable',
       description:
         'Puts a text variable into a text frame — in place of some text you name, or at the end of the story. On a master page this gives every page a running header or a date that updates itself.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam.describe('The text frame.'),
         page: pageParam.optional(),
@@ -381,7 +381,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
     {
       title: 'Delete a text variable',
       description: 'Removes a text variable from the document.',
-      inputSchema: z.strictObject({ document: documentParam, name: z.string() }),
+      inputSchema: toolInput({ document: documentParam, name: z.string() }),
     },
     async (args) =>
       run(() => {
@@ -398,7 +398,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       title: 'Nested styles',
       description:
         'Styles the start of every paragraph automatically: "the first two words in Bold", "everything up to the first colon in Small caps". InDesign calls these nested styles; they follow the paragraph style, so the text stays editable.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string().describe('The paragraph style to change.'),
         nested: z
@@ -441,7 +441,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       title: 'Line styles',
       description:
         'Styles whole lines of every paragraph in a style — "the first line in small caps", for instance.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string(),
         lines: z.array(
@@ -471,7 +471,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       title: 'GREP styles',
       description:
         "Styles every match of a pattern inside the paragraphs of a style — phone numbers in bold, acronyms in small caps, prices in a different colour. Uses InDesign's GREP (regular expression) syntax.",
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string(),
         grep: z

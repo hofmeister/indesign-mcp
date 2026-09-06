@@ -33,6 +33,47 @@ export const paragraphInput = z.object({
   style: z.string().optional().describe('Paragraph style name.'),
 });
 
+/**
+ * Wraps a field so a value the client sent as a JSON string is still understood: a number as "41",
+ * or an array/object as its JSON text.
+ *
+ * The value is only reinterpreted when the string itself is rejected and the decoded value is
+ * accepted, so genuine string fields (a style named "41", a page name) are never touched and
+ * out-of-range values still fail. The advertised JSON Schema is unchanged.
+ *
+ * When the string was clearly meant to be JSON but does not parse, the parser's own complaint is
+ * reported instead of the type mismatch it causes. "expected array, received string" sends you
+ * looking at the array; the truth is usually a bad escape in a string several levels down.
+ */
+function tolerantInput(inner: z.ZodType): z.ZodType {
+  return z.preprocess((v, ctx) => {
+    if (typeof v !== 'string' || inner.safeParse(v).success) return v;
+    const t = v.trim();
+    if (t !== '' && Number.isFinite(Number(t)) && inner.safeParse(Number(t)).success) return Number(t);
+    if (!/^[[{]/.test(t)) return v;
+    try {
+      const decoded: unknown = JSON.parse(t);
+      if (inner.safeParse(decoded).success) return decoded;
+      return decoded;
+    } catch (e) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `was sent as JSON text that does not parse: ${(e as Error).message}. Send it as a real array or object, or check for a bad escape inside one of its strings.`,
+      });
+      return v;
+    }
+  }, inner);
+}
+
+/**
+ * Builds a tool input schema. Same as `z.strictObject`, but tolerant of values a client stringified.
+ */
+export function toolInput<T extends z.ZodRawShape>(shape: T): z.ZodObject<T, z.core.$strict> {
+  const wrapped: Record<string, z.ZodType> = {};
+  for (const [key, schema] of Object.entries(shape)) wrapped[key] = tolerantInput(schema as z.ZodType);
+  return z.strictObject(wrapped as unknown as T);
+}
+
 export interface ToolResult {
   [key: string]: unknown;
   content: { type: 'text'; text: string }[];

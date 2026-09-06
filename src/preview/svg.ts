@@ -39,6 +39,11 @@ export interface RenderOptions {
   bleed?: boolean;
   /** Draw hidden layers too (default false). */
   includeHiddenLayers?: boolean;
+  /**
+   * Prefix for generated element ids. Several pages composed into one SVG (the contact sheet) must
+   * each get their own, or duplicate ids make every `use` resolve to the first page's glyphs.
+   */
+  idPrefix?: string;
 }
 
 export interface SvgResult {
@@ -81,7 +86,7 @@ class RenderContext {
   }
 
   nextId(prefix: string): string {
-    return `${prefix}${(this.idCounter++).toString(36)}`;
+    return `${this.options.idPrefix ?? ''}${prefix}${(this.idCounter++).toString(36)}`;
   }
 
   /** Lines for a text frame, composing its whole thread once. */

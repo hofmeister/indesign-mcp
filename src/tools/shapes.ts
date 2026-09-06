@@ -7,7 +7,16 @@ import { createFreePath, createPolygon, groupItems, stepAndRepeat, ungroupItems 
 import { applyObjectStyle } from '../idml/styles.ts';
 import { checkPlacement, fitNotes, pageBoxFor, placementWarnings, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
-import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
+import {
+  colorParam,
+  documentParam,
+  itemParam,
+  lengthParam,
+  ok,
+  pageParam,
+  run,
+  toolInput,
+} from './shared.ts';
 
 const targetParams = {
   page: pageParam.optional().describe('Page to place the item on (default 1).'),
@@ -35,7 +44,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Add polygon or star',
       description: 'Adds a regular polygon (triangle, pentagon, hexagon…) or a star inside the given box.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         ...targetParams,
         x: lengthParam,
@@ -85,7 +94,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add a free path',
       description:
         'Draws a path through a list of points (straight or smooth), open like a line or closed like a shape.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         ...targetParams,
         points: z
@@ -144,7 +153,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Group items',
       description: 'Groups several items on the same page so they can be moved, copied and styled together.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         items: z.array(itemParam).min(2),
         page: pageParam.optional(),
@@ -170,7 +179,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Ungroup',
       description: 'Dissolves a group; its items stay where they are.',
-      inputSchema: z.strictObject({ document: documentParam, group: itemParam, page: pageParam.optional() }),
+      inputSchema: toolInput({ document: documentParam, group: itemParam, page: pageParam.optional() }),
     },
     async (args) =>
       run(() => {
@@ -192,7 +201,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Step and repeat',
       description:
         "Copies an item into a grid, like InDesign's Step and Repeat — useful for labels, tickets or a photo grid.",
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -235,7 +244,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Apply object style',
       description:
         'Applies an object style to an item (fill, stroke, corners, text frame options and paragraph style in one go).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),

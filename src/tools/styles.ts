@@ -13,7 +13,7 @@ import {
   resolveStyle,
 } from '../idml/styles.ts';
 import type { ToolContext } from './context.ts';
-import { colorParam, documentParam, itemParam, ok, pageParam, run } from './shared.ts';
+import { colorParam, documentParam, itemParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 const textStyleFields = {
   font: z
@@ -72,7 +72,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List styles',
       description: 'Lists paragraph, character and object styles with their main settings.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         kind: z.enum(['paragraph', 'character', 'object', 'all']).default('all'),
       }),
@@ -115,7 +115,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       title: 'Create paragraph style',
       description:
         'Creates a paragraph style (font, size, leading, alignment, spacing, color…). Apply it with add_text_frame, set_text or apply_paragraph_style.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string(),
         basedOn: z.string().optional(),
@@ -141,7 +141,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       title: 'Create character style',
       description:
         'Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red). Apply it with format_text.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string(),
         basedOn: z.string().optional(),
@@ -165,7 +165,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       title: 'Update style',
       description:
         'Changes settings of an existing paragraph or character style. Everything using the style updates automatically in InDesign.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         kind: z.enum(['paragraph', 'character']),
         style: z.string(),
@@ -196,7 +196,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       title: 'Delete style',
       description:
         'Deletes a paragraph or character style; text using it gets the replacement style (default: basic/none).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         kind: z.enum(['paragraph', 'character']),
         style: z.string(),
@@ -223,7 +223,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List swatches',
       description: 'Lists color swatches with their values and an approximate hex color.',
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -246,7 +246,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Create swatch',
       description: 'Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for print).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string().optional().describe('Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0").'),
         color: z.string().optional().describe('"#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)".'),
@@ -293,7 +293,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       title: 'List fonts',
       description:
         'Lists the fonts the document refers to. Fonts must be installed on the computer that opens the document in InDesign.',
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -320,7 +320,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       title: 'Create object style',
       description:
         'Creates an object style: fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set. Apply it with apply_object_style.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string(),
         basedOn: z.string().optional(),
@@ -361,7 +361,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
     {
       title: 'Update object style',
       description: 'Changes an existing object style. Items using it follow automatically in InDesign.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         style: z.string(),
         fill: colorParam.optional(),
@@ -394,7 +394,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       title: 'Create gradient swatch',
       description:
         'Creates a linear or radial gradient swatch from two or more colours. Use it as a fill like any swatch.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         name: z.string(),
         type: z.enum(['linear', 'radial']).default('linear'),
@@ -429,7 +429,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       title: 'Gradient direction',
       description:
         'Sets the angle and length of a gradient fill on an item (0° = left to right, 90° = bottom to top).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),

@@ -6,8 +6,16 @@ import type { Rect } from './geometry.ts';
 import { listItems } from './items.ts';
 import { type LinkRecord, listLinks } from './links.ts';
 import { documentPageSize, listPages } from './pages.ts';
-import { fontsUsed, listSwatches } from './styles.ts';
-import { attr, children, descendants, type Element, firstChild, numAttr } from './xml.ts';
+import { fontsUsed, listSwatches, swatchElements } from './styles.ts';
+import {
+  attr,
+  children,
+  descendants,
+  type Element,
+  firstChild,
+  numAttr,
+  type Document as XmlDocument,
+} from './xml.ts';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -218,8 +226,12 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
 
   // --- colour ------------------------------------------------------------------------------
   checked.push('Colours');
+  // Only judge swatches the document actually uses. A template ships a few stock swatches nobody
+  // asked for, and warning about those buries the ones that matter.
+  const usedSwatches = referencedSwatches(doc);
   for (const s of listSwatches(doc)) {
     if (s.builtIn || s.kind !== 'color') continue;
+    if (!usedSwatches.has(s.self)) continue;
     if (intent === 'print' && s.space === 'RGB')
       add({
         check: 'rgb-swatch',
@@ -299,7 +311,8 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
 
   checked.push('Empty frames');
   for (const item of listItems(doc)) {
-    if (item.type === 'text' && !(item.text ?? '').trim())
+    // A frame whose story holds only a table has no plain text, but it is not empty.
+    if (item.type === 'text' && !(item.text ?? '').trim() && item.tables === 0)
       add({
         check: 'empty-frame',
         severity: 'info',
@@ -321,6 +334,50 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.filter((i) => i.severity === 'warning').length;
   return { ok: errors === 0, errors, warnings, issues, checked, links };
+}
+
+/**
+ * Self ids of the swatches referenced anywhere in the document — by page items, text runs, styles
+ * or gradients. An unused swatch sits in the panel without ever reaching the page.
+ */
+function referencedSwatches(doc: IdmlDocument): Set<string> {
+  const swatchIds = new Set(swatchElements(doc).map((el) => attr(el, 'Self') ?? ''));
+  const graphicParts = new Set(doc.partRefs('Graphic').map((r) => r.src));
+  const used = new Set<string>();
+
+  // Everything outside the swatch resource itself, which holds only the definitions.
+  for (const part of doc.partNames()) {
+    if (graphicParts.has(part)) continue;
+    let xml: XmlDocument;
+    try {
+      xml = doc.xml(part);
+    } catch {
+      continue;
+    }
+    const walk = (el: Element): void => {
+      // <ColorGroupSwatch> is the swatch *panel*: it names every swatch in the document, used or
+      // not, so counting it would make every swatch look used.
+      if (el.tagName === 'ColorGroupSwatch') return;
+      for (let i = 0; i < (el.attributes?.length ?? 0); i++) {
+        const a = el.attributes?.item(i);
+        if (!a || a.name === 'Self') continue;
+        if (swatchIds.has(a.value)) used.add(a.value);
+      }
+      for (const c of children(el)) walk(c);
+    };
+    if (xml.documentElement) walk(xml.documentElement);
+  }
+
+  // A gradient that is used puts its stop colours on the page too.
+  for (const el of swatchElements(doc)) {
+    const self = attr(el, 'Self') ?? '';
+    if (el.tagName !== 'Gradient' || !used.has(self)) continue;
+    for (const stop of descendants(el, 'GradientStop')) {
+      const ref = attr(stop, 'StopColor');
+      if (ref && swatchIds.has(ref)) used.add(ref);
+    }
+  }
+  return used;
 }
 
 export function preflightToMarkdown(report: PreflightReport): string {

@@ -15,7 +15,7 @@ import {
 import { packageDocument } from '../idml/packaging.ts';
 import { preflight, preflightToMarkdown } from '../idml/preflight.ts';
 import type { ToolContext } from './context.ts';
-import { documentParam, ok, pageParam, run } from './shared.ts';
+import { documentParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 const fitParam = z
   .enum(['fill', 'fit', 'stretch', 'center', 'frame-to-content'])
@@ -28,7 +28,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'List placed images',
       description:
         'Lists every placed picture with its file, page, print resolution and whether the file is still there — InDesign’s Links panel.',
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -49,7 +49,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Relink a picture',
       description:
         'Points a placed picture at a different file, keeping the frame, its position and its fitting. Also fixes a missing link.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         image: z
           .string()
@@ -79,7 +79,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Embed pictures in the document',
       description:
         'Copies picture files into the document so it can be sent on its own. The file grows; use unembed_images or package_document if you would rather keep the pictures as separate files.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         image: z.string().optional().describe('One picture (frame name, id or file name). Omit for all.'),
       }),
@@ -113,7 +113,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Save embedded pictures back to files',
       description:
         'Writes embedded pictures into a Links folder next to the document and links to them again.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         image: z.string().optional().describe('One picture. Omit for all embedded pictures.'),
         folder: z
@@ -148,7 +148,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Preflight (check before printing)',
       description:
         'Checks the document the way InDesign’s Preflight panel does: overset text, missing or low-resolution pictures, missing fonts, RGB colours in print work, hairlines, objects running off the page without bleed and empty frames.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         intent: z
           .enum(['print', 'screen'])
@@ -185,7 +185,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Package for a printer or client',
       description:
         'Collects the document, copies of every linked picture and a font/preflight report into one folder, ready to hand over — InDesign’s File > Package.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         folder: z.string().describe('Folder to create the package in.'),
         copyFonts: z
@@ -228,7 +228,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'List data-merge placeholders',
       description:
         'Shows the <<Field>> placeholders in the document — in text, and as picture-frame names — so you know what columns the data file needs.',
-      inputSchema: z.strictObject({ document: documentParam }),
+      inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -254,7 +254,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Data merge (fill from a spreadsheet)',
       description:
         'Fills a template page once per row of a CSV or JSON file, adding a page for every row — for name badges, certificates, price lists or personalised letters. Write <<Field>> in the text; name a picture frame <<Field>> to place a picture whose path is in that column.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         dataFile: z
           .string()
@@ -325,7 +325,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       title: 'Export as PDF, JPEG or PNG',
       description:
         'Exports the document for sending or printing. With Adobe InDesign installed the export is done by InDesign itself (press-ready PDF); otherwise the built-in renderer writes a vector PDF or images that are very close but not colour-managed.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         format: z.enum(['pdf', 'png', 'jpeg']).describe('pdf for sending or printing, png/jpeg for the web.'),
         outputFile: z

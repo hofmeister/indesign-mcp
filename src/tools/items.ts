@@ -57,6 +57,7 @@ import {
   pageParam,
   paragraphInput,
   run,
+  toolInput,
 } from './shared.ts';
 
 const targetParams = {
@@ -100,7 +101,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'List items',
       description:
         'Lists the items (frames, shapes, images, text) on a page or in the whole document with names, ids, positions and sizes.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         page: pageParam.optional(),
         includeMasters: z.boolean().optional(),
@@ -118,7 +119,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
         }));
         const lines = items.map(
           (i) =>
-            `${i.master ? `[master ${i.master}] ` : `p${i.page ?? '?'} `}${i.type}${i.name ? ` "${i.name}"` : ''} [${i.id}] ${i.position}, ${i.size}${i.text !== undefined ? `: "${i.text.slice(0, 60)}"` : ''}${i.image ? ` (${i.image})` : ''}`,
+            `${i.master ? `[master ${i.master}] ` : `p${i.page ?? '?'} `}${i.type}${i.name ? ` "${i.name}"` : ''} [${i.id}] ${i.position}, ${i.size}${i.tables ? ` (${i.tables} table${i.tables > 1 ? 's' : ''})` : ''}${i.text !== undefined ? `: "${i.text.slice(0, 60)}"` : ''}${i.image ? ` (${i.image})` : ''}`,
         );
         return ok(lines.join('\n') || 'No items', { items });
       }),
@@ -130,7 +131,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add text frame',
       description:
         'Adds a text frame with text to a page. Positions are measured from the top-left corner of the page. Paragraphs are separated by newlines; **bold** and *italic* markup is supported. Give it a name so you can edit it later.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         ...targetParams,
         ...placement,
@@ -268,7 +269,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Add line',
       description: 'Adds a straight line (rule) between two points on a page.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         ...targetParams,
         x1: lengthParam,
@@ -322,7 +323,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Move item',
       description: 'Moves an item to a position (from the top-left of its page) or by an offset (dx/dy).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional().describe('Disambiguates items with the same name.'),
@@ -385,7 +386,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Resize item',
       description: 'Changes the width and/or height of an item, keeping its top-left corner in place.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -413,7 +414,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Rotate item',
       description: 'Sets the rotation of an item in degrees (counter-clockwise, around its center).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -435,7 +436,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Fill, stroke, corners, opacity',
       description: 'Changes fill color, stroke (color, weight, type), corner radius and opacity of an item.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -482,7 +483,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Delete item',
       description: 'Deletes an item (and its text story if it was a text frame).',
-      inputSchema: z.strictObject({ document: documentParam, item: itemParam, page: pageParam.optional() }),
+      inputSchema: toolInput({ document: documentParam, item: itemParam, page: pageParam.optional() }),
       annotations: { destructiveHint: true },
     },
     async (args) =>
@@ -503,7 +504,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'Duplicate item',
       description:
         'Duplicates an item, offset by dx/dy (default 5mm) or onto another page at the same position.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -557,7 +558,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Rename item',
       description: 'Gives an item a name (or removes it).',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -580,7 +581,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'Arrange (z-order)',
       description:
         'Brings an item to the front / sends it to the back / one step forward or backward within its layer order.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -602,7 +603,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Move item to layer',
       description: 'Moves an item to another layer.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -627,7 +628,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'Align items',
       description:
         'Aligns items to the page or page margins: left, center, right, top, middle, bottom. Also distributes several items evenly.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         items: z.array(itemParam).min(1),
         page: pageParam.optional(),
@@ -705,7 +706,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Text frame options',
       description: 'Columns, gutter, inset spacing, vertical justification and auto-size of a text frame.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -738,7 +739,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Text wrap',
       description: 'Makes text in other frames flow around this item (bounding box wrap) or turns wrap off.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -784,7 +785,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       title: 'Fit frame to content',
       description:
         'For text frames: turns on auto-size so the frame grows/shrinks with its text (height, or both). For image frames use set_image_fit.',
-      inputSchema: z.strictObject({
+      inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
