@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { itemSummary } from '../idml/inspect.ts';
 import { findItem } from '../idml/items.ts';
@@ -7,6 +6,7 @@ import { createFreePath, createPolygon, groupItems, stepAndRepeat, ungroupItems 
 import { applyObjectStyle } from '../idml/styles.ts';
 import { checkPlacement, fitNotes, pageBoxFor, placementWarnings, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import {
   colorParam,
   documentParam,
@@ -32,14 +32,14 @@ const appearance = {
   rotation: z.number().optional(),
 };
 
-export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
+export function registerShapeTools(reg: ToolRegistry, ctx: ToolContext): void {
   const describe = (doc: import('../idml/document.ts').IdmlDocument, id: string) => {
     const found = findItem(doc, id);
     const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
     return itemSummary(found.info, ctx.unit, layers);
   };
 
-  server.registerTool(
+  reg.tool(
     'add_polygon',
     {
       title: 'Add polygon or star',
@@ -88,7 +88,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_path',
     {
       title: 'Add a free path',
@@ -148,7 +148,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'group_items',
     {
       title: 'Group items',
@@ -174,7 +174,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'ungroup_items',
     {
       title: 'Ungroup',
@@ -195,7 +195,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'step_and_repeat',
     {
       title: 'Step and repeat',
@@ -238,7 +238,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'apply_object_style',
     {
       title: 'Apply object style',

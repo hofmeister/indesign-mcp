@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { summarizeDocument, summaryToMarkdown } from '../idml/inspect.ts';
 import { validateAgainstSchema } from '../idml/schema.ts';
@@ -6,9 +5,10 @@ import { createDocument } from '../idml/template.ts';
 import { PAGE_SIZES } from '../idml/units.ts';
 import { summarizeIssues, validateDocument } from '../idml/validate.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, lengthParam, ok, run, toolInput } from './shared.ts';
-export function registerDocumentTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerDocumentTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'new_document',
     {
       title: 'New document',
@@ -74,7 +74,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'open_document',
     {
       title: 'Open document',
@@ -91,7 +91,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'describe_document',
     {
       title: 'Describe document',
@@ -118,7 +118,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'validate_document',
     {
       title: 'Validate document',
@@ -170,7 +170,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'save_document_as',
     {
       title: 'Save document as',
@@ -191,7 +191,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_document_options',
     {
       title: 'Document options',

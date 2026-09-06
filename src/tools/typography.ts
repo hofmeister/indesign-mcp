@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { IdmlDocument } from '../idml/document.ts';
 import { findItem } from '../idml/items.ts';
@@ -27,6 +26,7 @@ import {
 } from '../idml/variables.ts';
 import { attr, type Element } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, itemParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 function storyOf(doc: IdmlDocument, item: string, page?: number | string): Element {
@@ -38,8 +38,8 @@ function storyOf(doc: IdmlDocument, item: string, page?: number | string): Eleme
   return story;
 }
 
-export function registerTypographyTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'set_list_options',
     {
       title: 'Bullets and numbering',
@@ -90,7 +90,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_tab_stops',
     {
       title: 'Tab stops',
@@ -134,7 +134,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_hyperlink',
     {
       title: 'Add hyperlink',
@@ -168,7 +168,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_hyperlinks',
     {
       title: 'List hyperlinks',
@@ -183,7 +183,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_page_numbering',
     {
       title: 'Page numbering and sections',
@@ -218,7 +218,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'anchor_item_in_text',
     {
       title: 'Anchor an item in text',
@@ -253,7 +253,7 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'insert_special_characters',
     {
       title: 'Insert special characters',
@@ -279,8 +279,8 @@ export function registerTypographyTools(server: McpServer, ctx: ToolContext): vo
   );
 }
 
-export function registerVariableTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerVariableTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'create_text_variable',
     {
       title: 'Create a text variable',
@@ -329,7 +329,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_text_variables',
     {
       title: 'List text variables',
@@ -348,7 +348,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'insert_text_variable',
     {
       title: 'Insert a text variable',
@@ -376,7 +376,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'delete_text_variable',
     {
       title: 'Delete a text variable',
@@ -392,7 +392,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_nested_styles',
     {
       title: 'Nested styles',
@@ -435,7 +435,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_line_styles',
     {
       title: 'Line styles',
@@ -465,7 +465,7 @@ export function registerVariableTools(server: McpServer, ctx: ToolContext): void
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_grep_styles',
     {
       title: 'GREP styles',

@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { findItem } from '../idml/items.ts';
 import { listPages } from '../idml/pages.ts';
@@ -12,6 +11,7 @@ import {
   previewSpread,
 } from '../preview/index.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, itemParam, pageParam, run, type ToolResult, toolInput } from './shared.ts';
 
 const previewParams = {
@@ -59,7 +59,7 @@ function imageResult(r: PreviewResult, text: string, structured: Record<string, 
   return result;
 }
 
-export function registerPreviewTools(server: McpServer, ctx: ToolContext): void {
+export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void {
   const opts = (args: {
     width?: number;
     renderer?: 'auto' | 'builtin' | 'indesign';
@@ -76,7 +76,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
     save: args.save,
   });
 
-  server.registerTool(
+  reg.tool(
     'preview_page',
     {
       title: 'Preview page',
@@ -100,7 +100,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'preview_spread',
     {
       title: 'Preview spread',
@@ -122,7 +122,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'preview_document',
     {
       title: 'Preview all pages',
@@ -153,7 +153,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'preview_item',
     {
       title: 'Preview item (zoomed)',
@@ -185,7 +185,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'preview_capabilities',
     {
       title: 'Preview capabilities',

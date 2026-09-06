@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { itemSummary } from '../idml/inspect.ts';
 import {
@@ -48,6 +47,7 @@ import {
   withNotes,
 } from './checks.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import {
   colorParam,
   documentParam,
@@ -88,14 +88,14 @@ function target(args: { page?: number | string; master?: string }): Target {
   return args.master ? { master: args.master } : { page: args.page ?? 1 };
 }
 
-export function registerItemTools(server: McpServer, ctx: ToolContext): void {
+export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
   const describe = (doc: import('../idml/document.ts').IdmlDocument, el: Element) => {
     const found = findItem(doc, attr(el, 'Self')!);
     const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
     return itemSummary(found.info, ctx.unit, layers);
   };
 
-  server.registerTool(
+  reg.tool(
     'list_items',
     {
       title: 'List items',
@@ -125,7 +125,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_text_frame',
     {
       title: 'Add text frame',
@@ -198,7 +198,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
     cornerRadius: lengthParam.optional().describe('Rounded corners (rectangles only).'),
   });
 
-  server.registerTool(
+  reg.tool(
     'add_rectangle',
     {
       title: 'Add rectangle',
@@ -232,7 +232,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_ellipse',
     {
       title: 'Add ellipse',
@@ -264,7 +264,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_line',
     {
       title: 'Add line',
@@ -318,7 +318,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'move_item',
     {
       title: 'Move item',
@@ -381,7 +381,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'resize_item',
     {
       title: 'Resize item',
@@ -409,7 +409,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'rotate_item',
     {
       title: 'Rotate item',
@@ -431,7 +431,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_appearance',
     {
       title: 'Fill, stroke, corners, opacity',
@@ -478,7 +478,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'delete_item',
     {
       title: 'Delete item',
@@ -498,7 +498,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'duplicate_item',
     {
       title: 'Duplicate item',
@@ -553,7 +553,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'rename_item',
     {
       title: 'Rename item',
@@ -575,7 +575,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'arrange_item',
     {
       title: 'Arrange (z-order)',
@@ -598,7 +598,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_item_layer',
     {
       title: 'Move item to layer',
@@ -622,7 +622,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'align_items',
     {
       title: 'Align items',
@@ -701,7 +701,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_text_frame_options',
     {
       title: 'Text frame options',
@@ -734,7 +734,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_text_wrap',
     {
       title: 'Text wrap',
@@ -779,7 +779,7 @@ export function registerItemTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'fit_frame_to_content',
     {
       title: 'Fit frame to content',

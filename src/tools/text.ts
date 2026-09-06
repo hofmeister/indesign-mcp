@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { IdmlDocument } from '../idml/document.ts';
 import { findItem, listItems } from '../idml/items.ts';
@@ -17,6 +16,7 @@ import {
 import { resolveSwatch, styleSelf, textStyleAttrs } from '../idml/styles.ts';
 import { attr, type Element } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import {
   colorParam,
   documentParam,
@@ -61,8 +61,8 @@ function toParagraphs(
   return text ?? '';
 }
 
-export function registerTextTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerTextTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'get_text',
     {
       title: 'Get text',
@@ -101,7 +101,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_text',
     {
       title: 'Set text',
@@ -139,7 +139,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'append_text',
     {
       title: 'Append text',
@@ -172,7 +172,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'find_and_replace',
     {
       title: 'Find and replace',
@@ -211,7 +211,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'apply_paragraph_style',
     {
       title: 'Apply paragraph style',
@@ -239,7 +239,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'format_text',
     {
       title: 'Format text',
@@ -317,7 +317,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'insert_page_number',
     {
       title: 'Insert page number',
@@ -351,7 +351,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'thread_text_frames',
     {
       title: 'Thread text frames',

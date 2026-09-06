@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import {
   applyStyleSpec,
@@ -13,6 +12,7 @@ import {
   resolveStyle,
 } from '../idml/styles.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { colorParam, documentParam, itemParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 const textStyleFields = {
@@ -66,8 +66,8 @@ const paragraphFields = {
   dropCapCharacters: z.number().int().min(0).max(150).optional(),
 };
 
-export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'list_styles',
     {
       title: 'List styles',
@@ -109,7 +109,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_paragraph_style',
     {
       title: 'Create paragraph style',
@@ -135,7 +135,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_character_style',
     {
       title: 'Create character style',
@@ -159,7 +159,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'update_style',
     {
       title: 'Update style',
@@ -190,7 +190,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'delete_style',
     {
       title: 'Delete style',
@@ -218,7 +218,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_swatches',
     {
       title: 'List swatches',
@@ -241,7 +241,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_swatch',
     {
       title: 'Create swatch',
@@ -287,7 +287,7 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_fonts',
     {
       title: 'List fonts',
@@ -313,8 +313,8 @@ export function registerStyleTools(server: McpServer, ctx: ToolContext): void {
 }
 
 /** Object styles and gradient swatches. */
-export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerObjectStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'create_object_style',
     {
       title: 'Create object style',
@@ -356,7 +356,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'update_object_style',
     {
       title: 'Update object style',
@@ -388,7 +388,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_gradient',
     {
       title: 'Create gradient swatch',
@@ -423,7 +423,7 @@ export function registerObjectStyleTools(server: McpServer, ctx: ToolContext): v
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_gradient_geometry',
     {
       title: 'Gradient direction',

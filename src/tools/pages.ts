@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { formatMatrix } from '../idml/geometry.ts';
 import { masterInfos } from '../idml/inspect.ts';
@@ -17,9 +16,10 @@ import { applyMargins } from '../idml/template.ts';
 import { formatLength, PAGE_SIZES, resolvePageSize } from '../idml/units.ts';
 import { attr, children, createIdPkgRef, formatNumber, setAttrs } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
-export function registerPageTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'list_pages',
     {
       title: 'List pages',
@@ -50,7 +50,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_pages',
     {
       title: 'Add pages',
@@ -77,7 +77,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'remove_pages',
     {
       title: 'Remove pages',
@@ -97,7 +97,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_page_size',
     {
       title: 'Set page size',
@@ -169,7 +169,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_margins_and_columns',
     {
       title: 'Margins and columns',
@@ -207,7 +207,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_masters',
     {
       title: 'List master pages',
@@ -227,7 +227,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'apply_master',
     {
       title: 'Apply master page',
@@ -252,7 +252,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_master',
     {
       title: 'Create master page',
@@ -308,7 +308,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_guides',
     {
       title: 'Add ruler guides',
@@ -371,7 +371,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_layers',
     {
       title: 'List layers',
@@ -391,7 +391,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'create_layer',
     {
       title: 'Create layer',
@@ -411,7 +411,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_layer_options',
     {
       title: 'Layer options',
@@ -437,8 +437,8 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
 }
 
 /** Page ordering, layer management and master-item overrides. */
-export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'move_page',
     {
       title: 'Move page',
@@ -462,7 +462,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'duplicate_page',
     {
       title: 'Duplicate page',
@@ -489,7 +489,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'reorder_pages',
     {
       title: 'Reorder pages',
@@ -512,7 +512,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'override_master_item',
     {
       title: 'Override master page item',
@@ -535,7 +535,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'delete_layer',
     {
       title: 'Delete layer',
@@ -558,7 +558,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'reorder_layer',
     {
       title: 'Reorder layer',
@@ -579,7 +579,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_active_layer',
     {
       title: 'Set active layer',

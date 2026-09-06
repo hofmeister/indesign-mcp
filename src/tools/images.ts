@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { type FitMode, fillFrameWithImage, placedImageInfo, placeImage, refitImage } from '../idml/images.ts';
 import { itemSummary } from '../idml/inspect.ts';
@@ -12,6 +11,7 @@ import { type GeneratedImage, type ImageProvider, pickSize } from '../images/pro
 import { thumbnailBase64 } from '../images/thumbnail.ts';
 import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import {
   documentParam,
   itemParam,
@@ -76,7 +76,7 @@ const generationParams = {
     .describe('Include a small preview of the image in the reply (default true).'),
 };
 
-export function registerImageTools(server: McpServer, ctx: ToolContext, provider: ImageProvider): void {
+export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider: ImageProvider): void {
   const summarize = (doc: import('../idml/document.ts').IdmlDocument, id: string) => {
     const found = findItem(doc, id);
     const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
@@ -141,7 +141,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       : [];
   }
 
-  server.registerTool(
+  reg.tool(
     'place_image',
     {
       title: 'Place image',
@@ -172,7 +172,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_image_fit',
     {
       title: 'Fit image',
@@ -195,7 +195,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'generate_image',
     {
       title: 'Generate image (AI)',
@@ -258,7 +258,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'edit_image',
     {
       title: 'Edit image (AI)',
@@ -356,7 +356,7 @@ export function registerImageTools(server: McpServer, ctx: ToolContext, provider
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_images',
     {
       title: 'List placed images',

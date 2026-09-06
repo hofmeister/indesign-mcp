@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { IdmlDocument } from '../idml/document.ts';
 import { anchorBounds, readPaths } from '../idml/geometry.ts';
@@ -23,6 +22,7 @@ import type { Element } from '../idml/xml.ts';
 import { measureTableHeight } from '../preview/svg.ts';
 import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import {
   colorParam,
   documentParam,
@@ -42,8 +42,8 @@ function tableOf(ctx: ToolContext, doc: IdmlDocument, frameRef: string, page?: n
   return findTable(doc, found.element);
 }
 
-export function registerTableTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerTableTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'add_table',
     {
       title: 'Add table',
@@ -160,7 +160,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'get_table',
     {
       title: 'Read table',
@@ -185,7 +185,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'set_table_cells',
     {
       title: 'Fill table cells',
@@ -226,7 +226,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'style_table',
     {
       title: 'Style table cells',
@@ -280,7 +280,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'edit_table_structure',
     {
       title: 'Add or remove table rows and columns',
@@ -360,7 +360,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'merge_table_cells',
     {
       title: 'Merge table cells',

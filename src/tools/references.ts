@@ -1,5 +1,4 @@
 import { existsSync, writeFileSync } from 'node:fs';
-import type { McpServer } from '@modelcontextprotocol/server';
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { summarizeDocument, summaryToMarkdown } from '../idml/inspect.ts';
@@ -7,6 +6,7 @@ import { createDocument } from '../idml/template.ts';
 import type { ReferenceCatalog } from '../references/catalog.ts';
 import { copyMaster, copyPage, type ImportReport, importStyles } from '../references/importer.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 function reportText(r: ImportReport): string {
@@ -21,8 +21,9 @@ function reportText(r: ImportReport): string {
   return parts.length ? parts.join('\n') : 'Nothing to import.';
 }
 
-export function registerReferenceTools(server: McpServer, ctx: ToolContext, catalog: ReferenceCatalog): void {
-  server.registerTool(
+export function registerReferenceTools(reg: ToolRegistry, ctx: ToolContext, catalog: ReferenceCatalog): void {
+  const server = reg.server;
+  reg.tool(
     'list_reference_documents',
     {
       title: 'List reference documents',
@@ -58,7 +59,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'describe_reference',
     {
       title: 'Describe reference document',
@@ -78,7 +79,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'add_reference_folder',
     {
       title: 'Add reference folder',
@@ -92,7 +93,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'new_document_from_reference',
     {
       title: 'New document from reference',
@@ -155,7 +156,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'import_styles_from_reference',
     {
       title: 'Import styles from reference',
@@ -197,7 +198,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'copy_master_from_reference',
     {
       title: 'Copy master page from reference',
@@ -224,7 +225,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'copy_page_from_reference',
     {
       title: 'Copy page from reference',

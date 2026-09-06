@@ -1,5 +1,4 @@
 import { basename, dirname, join, resolve } from 'node:path';
-import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import { exportDocument } from '../export/index.ts';
 import { listMergeFields, mergeRecords, mergeToDocuments, readDataSource } from '../idml/datamerge.ts';
@@ -15,14 +14,15 @@ import {
 import { packageDocument } from '../idml/packaging.ts';
 import { preflight, preflightToMarkdown } from '../idml/preflight.ts';
 import type { ToolContext } from './context.ts';
+import type { ToolRegistry } from './registry.ts';
 import { documentParam, ok, pageParam, run, toolInput } from './shared.ts';
 
 const fitParam = z
   .enum(['fill', 'fit', 'stretch', 'center', 'frame-to-content'])
   .describe('How the picture sits in its frame; fill (default) crops to fill it.');
 
-export function registerProductionTools(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerProductionTools(reg: ToolRegistry, ctx: ToolContext): void {
+  reg.tool(
     'list_links',
     {
       title: 'List placed images',
@@ -43,7 +43,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'relink_image',
     {
       title: 'Relink a picture',
@@ -73,7 +73,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'embed_images',
     {
       title: 'Embed pictures in the document',
@@ -107,7 +107,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'unembed_images',
     {
       title: 'Save embedded pictures back to files',
@@ -142,7 +142,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'preflight_document',
     {
       title: 'Preflight (check before printing)',
@@ -179,7 +179,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'package_document',
     {
       title: 'Package for a printer or client',
@@ -222,7 +222,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'list_merge_fields',
     {
       title: 'List data-merge placeholders',
@@ -248,7 +248,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'data_merge',
     {
       title: 'Data merge (fill from a spreadsheet)',
@@ -319,7 +319,7 @@ export function registerProductionTools(server: McpServer, ctx: ToolContext): vo
       }),
   );
 
-  server.registerTool(
+  reg.tool(
     'export_document',
     {
       title: 'Export as PDF, JPEG or PNG',
