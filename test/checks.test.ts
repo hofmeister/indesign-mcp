@@ -157,10 +157,10 @@ describe('the tools refuse impossible input', () => {
       height: 40,
       name: 'Mover',
     });
-    const moved = await call('move_item', { document, item: 'Mover', x: 400, y: 20 });
+    const moved = await call('edit_item', { op: 'move', document, item: 'Mover', x: 400, y: 20 });
     expect(moved.isError).toBe(false);
     expect(moved.text).toContain('pasteboard');
-    const resized = await call('resize_item', { document, item: 'Mover', width: -10 });
+    const resized = await call('edit_item', { op: 'resize', document, item: 'Mover', width: -10 });
     expect(resized.isError).toBe(true);
     expect(resized.text).toContain('has to be positive');
   });
@@ -254,7 +254,14 @@ describe('copies are checked too', () => {
   });
 
   test('a duplicate pushed off the page is reported', async () => {
-    const r = await call('duplicate_item', { document, item: 'Tile', dx: 400, dy: 0, name: 'Far copy' });
+    const r = await call('edit_item', {
+      op: 'duplicate',
+      document,
+      item: 'Tile',
+      dx: 400,
+      dy: 0,
+      name: 'Far copy',
+    });
     expect(r.isError).toBe(false);
     expect(r.text).toContain('pasteboard');
   });

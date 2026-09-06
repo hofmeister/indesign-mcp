@@ -82,7 +82,7 @@ Finish with validate_document and a short summary of what you built.`,
           role: 'user' as const,
           content: {
             type: 'text' as const,
-            text: `Review the InDesign document at ${document}. Use describe_document and preview_page (if available) for every page, then give me concrete feedback as a senior layout designer would: hierarchy, alignment to the margins/grid, spacing consistency, typography (styles, sizes, leading), color use, image resolution (list images), and anything InDesign would flag (validate_document). Offer to apply the fixes.`,
+            text: `Review the InDesign document at ${document}. Use describe_document and preview (if available) for every page, then give me concrete feedback as a senior layout designer would: hierarchy, alignment to the margins/grid, spacing consistency, typography (styles, sizes, leading), color use, image resolution (list images), and anything InDesign would flag (validate_document). Offer to apply the fixes.`,
           },
         },
       ],

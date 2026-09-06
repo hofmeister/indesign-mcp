@@ -137,8 +137,8 @@ console.log(`document created and validated at ${docPath}`);
 
 // Preview and export exercise the embedded fonts, the WASM rasterizer and the PDF/PNG writers.
 const preview = (await request('tools/call', {
-  name: 'preview_page',
-  arguments: { document: docPath, page: 1, renderer: 'builtin', width: 400 },
+  name: 'preview',
+  arguments: { what: 'page', document: docPath, page: 1, renderer: 'builtin', width: 400 },
 })) as { result?: { isError?: boolean; content?: { type?: string; data?: string; text?: string }[] } };
 assert(!preview.result?.isError, `preview_page succeeded: ${said(preview)}`);
 assert(

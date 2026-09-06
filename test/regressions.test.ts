@@ -236,8 +236,8 @@ describe('master page transforms', () => {
     const client = await connectedClient();
     const document = docPath('master');
     await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 4 });
-    await call(client, 'add_pages', { document, count: 2 });
-    await call(client, 'duplicate_page', { document, page: 1 });
+    await call(client, 'edit_pages', { op: 'add', document, count: 2 });
+    await call(client, 'edit_pages', { op: 'duplicate', document, page: 1 });
 
     const { readFileSync } = await import('node:fs');
     const { strFromU8, unzipSync } = await import('fflate');

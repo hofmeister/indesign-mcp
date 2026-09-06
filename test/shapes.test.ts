@@ -437,8 +437,8 @@ describe('new tools over MCP', () => {
     expect(sr.data!.created).toBe(3);
     const grouped = await call('group_items', { document: doc, items: ['Star', 'Swoosh'], name: 'Art' });
     expect(grouped.isError).toBe(false);
-    expect((await call('move_page', { document: doc, page: 3, to: 1 })).isError).toBe(false);
-    expect((await call('duplicate_page', { document: doc, page: 2 })).data!.page).toBe(3);
+    expect((await call('edit_pages', { op: 'move', document: doc, page: 3, to: 1 })).isError).toBe(false);
+    expect((await call('edit_pages', { op: 'duplicate', document: doc, page: 2 })).data!.page).toBe(3);
     const v = await call('validate_document', { document: doc });
     expect(v.data!.errors).toBe(0);
     // the page was duplicated, so two items are called "Art" now: the page number disambiguates
@@ -447,7 +447,13 @@ describe('new tools over MCP', () => {
     expect(ambiguous.text).toContain('matches 2 items');
     const ug = await call('ungroup_items', { document: doc, group: 'Art', page: 2 });
     expect(ug.isError).toBe(false);
-    const prev = await call('preview_page', { document: doc, page: 2, width: 400, renderer: 'builtin' });
+    const prev = await call('preview', {
+      what: 'page',
+      document: doc,
+      page: 2,
+      width: 400,
+      renderer: 'builtin',
+    });
     expect(prev.isError).toBe(false);
   });
 });

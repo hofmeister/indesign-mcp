@@ -25,8 +25,9 @@ export interface RegisteredOperation {
   readOnly: boolean;
 }
 
-export interface RegisteredListing {
-  what: string;
+export interface RegisteredVariant {
+  family: string;
+  key: string;
   description: string;
   schema: z.ZodType | undefined;
   run: AnyHandler;
@@ -34,7 +35,7 @@ export interface RegisteredListing {
 
 export class ToolRegistry {
   private operations = new Map<string, RegisteredOperation>();
-  private listings = new Map<string, RegisteredListing>();
+  private families = new Map<string, Map<string, RegisteredVariant>>();
 
   /** The underlying server, for the few registrations that are not tools (resources). */
   constructor(readonly server: McpServer) {}
@@ -54,32 +55,44 @@ export class ToolRegistry {
   }
 
   /**
-   * A read-only listing, exposed as one `list` tool rather than thirteen `list_*` tools.
-   * The handler and its schema stay in the module that owns the subject.
+   * One variant of a merged tool: it is not registered on its own, but collected so
+   * `registerFamilyTool` can expose the whole family under a single name.
    */
-  listing<T extends z.ZodType>(
-    what: string,
+  variant<T extends z.ZodType>(
+    family: string,
+    key: string,
     config: ToolConfig<T>,
     handler: (args: z.infer<T>) => ToolResult | Promise<ToolResult>,
   ): void {
-    this.listings.set(what, {
-      what,
-      description: config.description ?? config.title ?? what,
+    let group = this.families.get(family);
+    if (!group) {
+      group = new Map();
+      this.families.set(family, group);
+    }
+    group.set(key, {
+      family,
+      key,
+      description: config.description ?? config.title ?? key,
       schema: config.inputSchema,
       run: handler as AnyHandler,
     });
   }
 
-  listingNames(): string[] {
-    return [...this.listings.keys()];
+  /** Shorthand for the read-only `list` family. */
+  listing<T extends z.ZodType>(
+    key: string,
+    config: ToolConfig<T>,
+    handler: (args: z.infer<T>) => ToolResult | Promise<ToolResult>,
+  ): void {
+    this.variant('list', key, config, handler);
   }
 
-  listingsFor(): RegisteredListing[] {
-    return [...this.listings.values()];
+  variants(family: string): RegisteredVariant[] {
+    return [...(this.families.get(family)?.values() ?? [])];
   }
 
-  listingFor(what: string): RegisteredListing | undefined {
-    return this.listings.get(what);
+  variantFor(family: string, key: string): RegisteredVariant | undefined {
+    return this.families.get(family)?.get(key);
   }
 
   operation(name: string): RegisteredOperation | undefined {

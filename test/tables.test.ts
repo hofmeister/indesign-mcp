@@ -488,7 +488,13 @@ describe('table and typography tools over MCP', () => {
 
     const v = await call('validate_document', { document: doc });
     expect(v.data!.errors).toBe(0);
-    const prev = await call('preview_page', { document: doc, page: 1, width: 400, renderer: 'builtin' });
+    const prev = await call('preview', {
+      what: 'page',
+      document: doc,
+      page: 1,
+      width: 400,
+      renderer: 'builtin',
+    });
     expect(prev.isError).toBe(false);
   });
 });

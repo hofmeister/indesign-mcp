@@ -392,8 +392,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
     async (args) => run(() => addShape(args)),
   );
 
-  reg.tool(
-    'move_item',
+  reg.variant(
+    'edit_item',
+    'move',
     {
       title: 'Move item',
       description: 'Moves an item to a position (from the top-left of its page) or by an offset (dx/dy).',
@@ -455,8 +456,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'resize_item',
+  reg.variant(
+    'edit_item',
+    'resize',
     {
       title: 'Resize item',
       description: 'Changes the width and/or height of an item, keeping its top-left corner in place.',
@@ -483,8 +485,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'rotate_item',
+  reg.variant(
+    'edit_item',
+    'rotate',
     {
       title: 'Rotate item',
       description: 'Sets the rotation of an item in degrees (counter-clockwise, around its center).',
@@ -552,8 +555,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'delete_item',
+  reg.variant(
+    'edit_item',
+    'delete',
     {
       title: 'Delete item',
       description: 'Deletes an item (and its text story if it was a text frame).',
@@ -572,8 +576,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'duplicate_item',
+  reg.variant(
+    'edit_item',
+    'duplicate',
     {
       title: 'Duplicate item',
       description:
@@ -627,8 +632,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'rename_item',
+  reg.variant(
+    'edit_item',
+    'rename',
     {
       title: 'Rename item',
       description: 'Gives an item a name (or removes it).',
@@ -649,8 +655,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'arrange_item',
+  reg.variant(
+    'edit_item',
+    'arrange',
     {
       title: 'Arrange (z-order)',
       description:
@@ -672,8 +679,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'set_item_layer',
+  reg.variant(
+    'edit_item',
+    'layer',
     {
       title: 'Move item to layer',
       description: 'Moves an item to another layer.',
@@ -696,8 +704,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'align_items',
+  reg.variant(
+    'edit_item',
+    'align',
     {
       title: 'Align items',
       description:
@@ -853,8 +862,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'fit_frame_to_content',
+  reg.variant(
+    'edit_item',
+    'fit',
     {
       title: 'Fit frame to content',
       description:
@@ -871,7 +881,7 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
         const doc = ctx.open(args.document);
         const found = findItem(doc, args.item, args.page);
         if (found.element.tagName !== 'TextFrame')
-          throw new Error('fit_frame_to_content works on text frames; use set_image_fit for pictures');
+          throw new Error('edit_item fit works on text frames; use set_image_fit for pictures');
         setTextFrameOptions(found.element, { autoSize: args.mode });
         ctx.save(doc);
         return ok(`Frame will auto-size (${args.mode}).`);

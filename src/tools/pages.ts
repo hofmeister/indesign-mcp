@@ -50,8 +50,9 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'add_pages',
+  reg.variant(
+    'edit_pages',
+    'add',
     {
       title: 'Add pages',
       description:
@@ -77,8 +78,9 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'remove_pages',
+  reg.variant(
+    'edit_pages',
+    'remove',
     {
       title: 'Remove pages',
       description: 'Deletes pages and everything on them.',
@@ -391,8 +393,9 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'create_layer',
+  reg.variant(
+    'edit_layers',
+    'create',
     {
       title: 'Create layer',
       description: 'Creates a new layer on top of the others.',
@@ -411,8 +414,9 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'set_layer_options',
+  reg.variant(
+    'edit_layers',
+    'options',
     {
       title: 'Layer options',
       description: 'Renames, hides/shows or locks/unlocks a layer.',
@@ -438,8 +442,9 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
 
 /** Page ordering, layer management and master-item overrides. */
 export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void {
-  reg.tool(
-    'move_page',
+  reg.variant(
+    'edit_pages',
+    'move',
     {
       title: 'Move page',
       description:
@@ -462,8 +467,9 @@ export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'duplicate_page',
+  reg.variant(
+    'edit_pages',
+    'duplicate',
     {
       title: 'Duplicate page',
       description:
@@ -489,8 +495,9 @@ export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'reorder_pages',
+  reg.variant(
+    'edit_pages',
+    'reorder',
     {
       title: 'Reorder pages',
       description: 'Puts the pages in the given order, e.g. [3,1,2].',
@@ -535,8 +542,9 @@ export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'delete_layer',
+  reg.variant(
+    'edit_layers',
+    'delete',
     {
       title: 'Delete layer',
       description: 'Deletes a layer; its items move to another layer, or are deleted with it.',
@@ -558,8 +566,9 @@ export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'reorder_layer',
+  reg.variant(
+    'edit_layers',
+    'reorder',
     {
       title: 'Reorder layer',
       description: 'Moves a layer up or down the stack. Position 1 is the top-most layer.',
@@ -579,8 +588,9 @@ export function registerPageOpsTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'set_active_layer',
+  reg.variant(
+    'edit_layers',
+    'active',
     {
       title: 'Set active layer',
       description: 'Chooses the layer that new items are created on.',

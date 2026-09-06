@@ -44,7 +44,7 @@ describe('tools end to end', () => {
       'set_text',
       'create_paragraph_style',
       'create_swatch',
-      'add_pages',
+      'edit_pages',
       'validate_document',
     ]) {
       expect(names).toContain(expected);
@@ -124,11 +124,11 @@ describe('tools end to end', () => {
     expect(r.data?.count).toBe(1);
     r = await call('find_and_replace', { document: path, find: 'Body text', replace: 'Intro' });
     expect(r.data?.count).toBe(1);
-    r = await call('move_item', { document: path, item: 'Band', y: 80 });
+    r = await call('edit_item', { op: 'move', document: path, item: 'Band', y: 80 });
     expect(r.isError).toBe(false);
-    r = await call('duplicate_item', { document: path, item: 'Band', toPage: 2, name: 'Band 2' });
+    r = await call('edit_item', { op: 'duplicate', document: path, item: 'Band', toPage: 2, name: 'Band 2' });
     expect(r.isError).toBe(false);
-    r = await call('add_pages', { document: path, count: 1 });
+    r = await call('edit_pages', { op: 'add', document: path, count: 1 });
     expect(r.data?.total).toBe(3);
 
     const desc = await call('describe_document', { document: path });
@@ -154,7 +154,8 @@ describe('tools end to end', () => {
     expect(r.isError).toBe(true);
     expect(r.text).toContain('File not found');
     const created = await call('new_document', { path: 'err-test' });
-    const r2 = await call('move_item', {
+    const r2 = await call('edit_item', {
+      op: 'move',
       document: created.data!.path as string,
       item: 'Nothing',
       x: 1,

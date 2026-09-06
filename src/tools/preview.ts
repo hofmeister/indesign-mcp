@@ -76,8 +76,9 @@ export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void 
     save: args.save,
   });
 
-  reg.tool(
-    'preview_page',
+  reg.variant(
+    'preview',
+    'page',
     {
       title: 'Preview page',
       description:
@@ -100,8 +101,9 @@ export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'preview_spread',
+  reg.variant(
+    'preview',
+    'spread',
     {
       title: 'Preview spread',
       description: 'Renders the whole spread (facing pages side by side) that contains the given page.',
@@ -122,8 +124,9 @@ export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'preview_document',
+  reg.variant(
+    'preview',
+    'document',
     {
       title: 'Preview all pages',
       description: 'Renders every page as a thumbnail on one contact sheet.',
@@ -153,8 +156,9 @@ export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void 
       }),
   );
 
-  reg.tool(
-    'preview_item',
+  reg.variant(
+    'preview',
+    'item',
     {
       title: 'Preview item (zoomed)',
       description: 'Renders a close-up of one item and its surroundings.',

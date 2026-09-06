@@ -186,8 +186,8 @@ describe('preview tools', () => {
       arguments: { document: doc, x: 10, y: 10, width: 100, height: 40, text: 'Preview me', name: 'T' },
     });
     const r = await client.callTool({
-      name: 'preview_page',
-      arguments: { document: doc, page: 1, width: 400, renderer: 'builtin' },
+      name: 'preview',
+      arguments: { what: 'page', document: doc, page: 1, width: 400, renderer: 'builtin' },
     });
     expect(r.isError).toBeFalsy();
     const content = r.content as { type: string; mimeType?: string; data?: string; text?: string }[];
@@ -198,8 +198,8 @@ describe('preview tools', () => {
     expect(existsSync(saved)).toBe(true);
     expect(content.find((c) => c.type === 'text')?.text).toContain('built-in renderer');
     const item = await client.callTool({
-      name: 'preview_item',
-      arguments: { document: doc, item: 'T', width: 300 },
+      name: 'preview',
+      arguments: { what: 'item', document: doc, item: 'T', width: 300 },
     });
     expect(item.isError).toBeFalsy();
     const caps = await client.callTool({ name: 'preview_capabilities', arguments: {} });
