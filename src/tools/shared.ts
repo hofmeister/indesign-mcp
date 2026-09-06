@@ -28,6 +28,11 @@ export const colorParam = z
     'A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches.',
   );
 
+export const paragraphInput = z.object({
+  text: z.string().describe('Paragraph text; **bold** and *italic* supported.'),
+  style: z.string().optional().describe('Paragraph style name.'),
+});
+
 export interface ToolResult {
   [key: string]: unknown;
   content: { type: 'text'; text: string }[];

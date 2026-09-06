@@ -228,6 +228,7 @@ Adds a text frame with text to a page. Positions are measured from the top-left 
 | `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `height` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `text` | string | The text. Newlines start new paragraphs. |
+| `paragraphs` | array | Paragraphs with their own styles, instead of `text`. |
 | `paragraphStyle` | string | Paragraph style name to apply to all paragraphs. |
 | `columns` | integer |  |
 | `gutter` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -904,6 +905,7 @@ Renders a page to a PNG image and shows it, so you can check the layout. Uses Ad
 | `showGuides` | boolean | Draw margin and column guides. |
 | `showFrameEdges` | boolean | Outline text and picture frames. |
 | `bleed` | boolean | Include the bleed area. |
+| `save` | boolean | Also write the PNG next to the document, in a .previews folder (default true). |
 
 ### `preview_spread`
 
@@ -918,6 +920,7 @@ Renders the whole spread (facing pages side by side) that contains the given pag
 | `showGuides` | boolean | Draw margin and column guides. |
 | `showFrameEdges` | boolean | Outline text and picture frames. |
 | `bleed` | boolean | Include the bleed area. |
+| `save` | boolean | Also write the PNG next to the document, in a .previews folder (default true). |
 
 ### `preview_document`
 

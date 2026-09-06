@@ -291,6 +291,69 @@ describe('anchored objects', () => {
   });
 });
 
+describe('a table and its frame', () => {
+  test('the frame add_table creates grows to hold the whole table', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-tablefit-'));
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await createServer(
+      loadConfig({ INDESIGN_MCP_DOCUMENTS: dir, INDESIGN_MCP_DISABLE_INDESIGN: '1' }),
+    ).connect(st);
+    const client = new Client({ name: 't', version: '0' });
+    await client.connect(ct);
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const r = await client.callTool({ name, arguments: args });
+      return {
+        text: (r.content as { text?: string }[]).map((c) => c.text ?? '').join('\n'),
+        data: r.structuredContent as Record<string, unknown> | undefined,
+        isError: Boolean(r.isError),
+      };
+    };
+    const document = (await call('new_document', { path: 'fit', pageSize: 'A4' })).data!.path as string;
+    const rows = [
+      ['Measure', 'Q1', 'Q2'],
+      ['Jobs', '31', '36'],
+      ['Hours', '19.4', '15.1'],
+      ['Proofs', '3.1', '2.4'],
+      ['Errors', '7', '3'],
+      ['Overtime', '96', '54'],
+    ];
+    const made = await call('add_table', {
+      document,
+      page: 1,
+      x: 20,
+      y: 20,
+      width: 160,
+      data: rows,
+      headerRows: 1,
+      name: 'Metrics',
+    });
+    expect(made.isError).toBe(false);
+    const doc = IdmlDocument.load(document);
+    const frame = findItem(doc, 'Metrics');
+    const table = findTable(doc, frame.element);
+    const bounds = frame.info.bounds!;
+    const tableHeight = tableInfo(table).rowHeights.reduce((a, b) => a + b, 0);
+    // the frame is at least as tall as the table, so no row is cut off
+    expect(bounds.height).toBeGreaterThanOrEqual(tableHeight - 0.5);
+
+    // an existing frame that is too short is reported instead
+    await call('add_text_frame', {
+      document,
+      page: 1,
+      x: 20,
+      y: 240,
+      width: 160,
+      height: 20,
+      text: '',
+      name: 'Small',
+    });
+    const cramped = await call('add_table', { document, frame: 'Small', data: rows, headerRows: 1 });
+    expect(cramped.isError).toBe(false);
+    expect(cramped.text).toContain('taller than frame');
+    expect((cramped.data!.notes as string[]).length).toBe(1);
+  });
+});
+
 describe('table and typography tools over MCP', () => {
   let client: Client;
   const call = async (name: string, args: Record<string, unknown>) => {

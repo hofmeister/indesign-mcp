@@ -15,7 +15,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       title: 'New document',
       description:
         'Creates a new InDesign document (.idml) from the built-in blank template: page size, orientation, number of pages, margins, columns and bleed. The file is saved immediately. Then use add_text_frame, place_image etc. to fill it.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         path: z
           .string()
           .describe('Where to save, e.g. "flyer.idml" (saved in the documents folder) or an absolute path.'),
@@ -81,7 +81,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       title: 'Open document',
       description:
         'Opens an existing .idml file and returns a summary of its pages, items, styles and swatches (same as describe_document).',
-      inputSchema: z.object({ document: documentParam }),
+      inputSchema: z.strictObject({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -98,7 +98,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       title: 'Describe document',
       description:
         'Describes a document: pages with every item (type, name, id, position and size in mm, text, images), master pages, layers, paragraph/character styles, swatches and fonts. Call this before editing so you can refer to items by name or id.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         page: z
           .union([z.number().int().positive(), z.string()])
@@ -125,7 +125,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       title: 'Validate document',
       description:
         "Checks the document for problems that would stop InDesign from opening it or make it behave oddly: missing parts, duplicate ids, references to deleted styles/swatches/stories, page-count mismatches, broken text threads, and (schema: true, default) every part against Adobe's IDML schema.",
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         schema: z
           .boolean()
@@ -176,7 +176,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
     {
       title: 'Save document as',
       description: 'Saves a copy of the document under a new name. Later edits should refer to the new path.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         newPath: z.string(),
         overwrite: z.boolean().optional(),
@@ -198,7 +198,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext): void
       title: 'Document options',
       description:
         'Changes document-wide settings: bleed, slug, facing pages. Page size is changed with set_page_size.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         bleed: lengthParam.optional(),
         slug: lengthParam.optional(),

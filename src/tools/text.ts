@@ -17,12 +17,7 @@ import {
 import { resolveSwatch, styleSelf, textStyleAttrs } from '../idml/styles.ts';
 import { attr, type Element } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
-import { colorParam, documentParam, itemParam, ok, pageParam, run } from './shared.ts';
-
-const paragraphInput = z.object({
-  text: z.string().describe('Paragraph text; **bold** and *italic* supported.'),
-  style: z.string().optional().describe('Paragraph style name.'),
-});
+import { colorParam, documentParam, itemParam, ok, pageParam, paragraphInput, run } from './shared.ts';
 
 function storyOf(
   doc: IdmlDocument,
@@ -64,7 +59,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Get text',
       description:
         'Returns the text of a text frame (or of every text frame in the document), paragraph by paragraph with style names.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam.optional(),
         page: pageParam.optional(),
@@ -103,7 +98,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Set text',
       description:
         'Replaces all text in a text frame. Use `text` (newlines = paragraphs) or `paragraphs` for per-paragraph styles.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -140,7 +135,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Append text',
       description: "Adds paragraphs at the end of a text frame's text.",
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -174,7 +169,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Find and replace',
       description:
         'Finds and replaces text across the whole document or inside one text frame. Supports regular expressions.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         find: z.string(),
         replace: z.string().optional().describe('Omit to only count matches.'),
@@ -213,7 +208,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Apply paragraph style',
       description:
         'Applies a paragraph style to all paragraphs of a text frame, to specific paragraph numbers, or to paragraphs containing some text.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -241,7 +236,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Format text',
       description:
         'Formats every occurrence of some text inside a frame (or the whole document): apply a character style, or local formatting such as bold, italic, size, font, color, tracking.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         find: z.string().describe('The text to format (exact, case-insensitive by default).'),
         item: itemParam.optional(),
@@ -319,7 +314,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Insert page number',
       description:
         'Adds an automatic page-number marker to a text frame, typically a small frame on a master page (create it with add_text_frame using master).',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -343,7 +338,7 @@ export function registerTextTools(server: McpServer, ctx: ToolContext): void {
       title: 'Thread text frames',
       description:
         "Links two text frames so text overflowing the first continues in the second. The second frame's own text is discarded.",
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         from: itemParam,
         to: itemParam,

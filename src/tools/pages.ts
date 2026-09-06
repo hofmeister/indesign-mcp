@@ -25,7 +25,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List pages',
       description: 'Lists the pages with size, side (left/right), margins, columns and applied master page.',
-      inputSchema: z.object({ document: documentParam }),
+      inputSchema: z.strictObject({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -57,7 +57,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add pages',
       description:
         'Adds pages at the end of the document (new pages get the same master as the last page unless specified).',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         count: z.number().int().min(1).max(200).optional().describe('How many pages (default 1).'),
         master: z.string().optional().describe('Master page to apply, e.g. "A-Master", or "none".'),
@@ -83,7 +83,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Remove pages',
       description: 'Deletes pages and everything on them.',
-      inputSchema: z.object({ document: documentParam, pages: z.array(pageParam).min(1) }),
+      inputSchema: z.strictObject({ document: documentParam, pages: z.array(pageParam).min(1) }),
       annotations: { destructiveHint: true },
     },
     async ({ document, pages }) =>
@@ -103,7 +103,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Set page size',
       description: `Changes the page size of the whole document. Presets: ${Object.keys(PAGE_SIZES).join(', ')}, or give width and height. Existing items keep their position relative to the top-left corner of their page.`,
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         pageSize: z.string().optional(),
         orientation: z.enum(['portrait', 'landscape']).optional(),
@@ -175,7 +175,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Margins and columns',
       description: 'Sets page margins and column guides for all pages, or for specific pages.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         margins: z
           .union([
@@ -213,7 +213,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List master pages',
       description: 'Lists master pages (parent pages) with the number of items on each.',
-      inputSchema: z.object({ document: documentParam }),
+      inputSchema: z.strictObject({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -233,7 +233,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Apply master page',
       description: 'Applies a master page (or "none") to the given pages.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         master: z.string(),
         pages: z.array(pageParam).min(1),
@@ -259,7 +259,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       title: 'Create master page',
       description:
         'Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Add items to it with add_text_frame etc. using target master.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         prefix: z.string().max(4).describe('One-letter prefix, e.g. "B".'),
         name: z.string().describe('Name, e.g. "Chapter".'),
@@ -315,7 +315,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add ruler guides',
       description:
         'Adds ruler guides to a page: explicit horizontal/vertical positions (from the page top-left), or guides along the margins and column edges.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         page: pageParam.default(1),
         horizontal: z.array(lengthParam).optional().describe('Distances from the top of the page.'),
@@ -377,7 +377,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List layers',
       description: 'Lists layers (top-most first).',
-      inputSchema: z.object({ document: documentParam }),
+      inputSchema: z.strictObject({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ document }) =>
@@ -397,7 +397,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Create layer',
       description: 'Creates a new layer on top of the others.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         name: z.string(),
         color: z.string().optional().describe('Layer color name, e.g. Red, Green, LightBlue.'),
@@ -417,7 +417,7 @@ export function registerPageTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Layer options',
       description: 'Renames, hides/shows or locks/unlocks a layer.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         layer: z.string(),
         name: z.string().optional(),
@@ -445,7 +445,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       title: 'Move page',
       description:
         'Moves a page to another position. Spreads are rebuilt the way InDesign does it, and everything on the page moves with it.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         page: pageParam,
         to: z.number().int().min(1).describe('New position (1 = first page).'),
@@ -469,7 +469,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       title: 'Duplicate page',
       description:
         'Copies a page with everything on it and inserts the copy after the original (or at a chosen position).',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         page: pageParam,
         after: z
@@ -495,7 +495,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Reorder pages',
       description: 'Puts the pages in the given order, e.g. [3,1,2].',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         order: z.array(pageParam).min(1).describe('Every page, in the new order.'),
       }),
@@ -519,7 +519,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
       title: 'Override master page item',
       description:
         'Makes an item that comes from the master page editable on one page (like Cmd/Ctrl+Shift-clicking it in InDesign). Use it to change a headline or logo on a single page.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         page: pageParam,
         item: z.string().describe('Name or id of the item on the master page.'),
@@ -541,7 +541,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Delete layer',
       description: 'Deletes a layer; its items move to another layer, or are deleted with it.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         layer: z.string(),
         moveItemsTo: z.string().optional(),
@@ -564,7 +564,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Reorder layer',
       description: 'Moves a layer up or down the stack. Position 1 is the top-most layer.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         layer: z.string(),
         position: z.number().int().min(1),
@@ -585,7 +585,7 @@ export function registerPageOpsTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Set active layer',
       description: 'Chooses the layer that new items are created on.',
-      inputSchema: z.object({ document: documentParam, layer: z.string() }),
+      inputSchema: z.strictObject({ document: documentParam, layer: z.string() }),
     },
     async ({ document, layer }) =>
       run(() => {

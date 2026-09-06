@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { createRectangle, createTextFrame, findItem } from '../src/idml/items.ts';
-import { setStoryText } from '../src/idml/stories.ts';
+import { appendPageNumberMarker, setStoryText } from '../src/idml/stories.ts';
 import { createParagraphStyle, resolveStyle } from '../src/idml/styles.ts';
 import { createTable } from '../src/idml/tables.ts';
 import { createDocument } from '../src/idml/template.ts';
@@ -229,6 +229,11 @@ describe('text wrap', () => {
     };
     const plain = build(false);
     const wrapped = build(true);
+    // the box in spread coordinates, so the test does not depend on where the page sits
+    const boxRect = /<path d="M([\d.-]+) ([\d.-]+)L[^"]*" fill="rgb\(35,31,32\)"\/>/.exec(wrapped);
+    expect(boxRect).not.toBeNull();
+    const boxX = Number(boxRect![1]);
+    const boxY = Number(boxRect![2]);
     const xs = (svg: string) =>
       [...svg.matchAll(/matrix\([\d.]+ 0 0 -[\d.]+ ([\d.-]+) ([\d.-]+)\)/g)].map((m) => ({
         x: Number(m[1]),
@@ -236,7 +241,7 @@ describe('text wrap', () => {
       }));
     // in the band beside the box, no glyph may sit inside it when the wrap is on
     const inBox = (points: { x: number; y: number }[]) =>
-      points.filter((p) => p.x > 25 && p.x < 140 && p.y > -230 && p.y < -160).length;
+      points.filter((p) => p.x > boxX + 5 && p.x < boxX + 115 && p.y > boxY + 5 && p.y < boxY + 75).length;
     expect(inBox(xs(plain))).toBeGreaterThan(0);
     expect(inBox(xs(wrapped))).toBe(0);
     // the text is still all there: it just needs more lines
@@ -278,6 +283,29 @@ describe('anchored objects', () => {
     expect(redPixels).toBeGreaterThan(50);
     expect(lowestRed).toBeLessThan(raster.height / 4);
     expect(findItem(doc, 'Icon').info.id).toBeTruthy();
+  });
+});
+
+describe('page numbers', () => {
+  test('an automatic page-number marker shows the page it is drawn on', async () => {
+    const doc = createDocument({ pageSize: 'A6', pages: 3 });
+    const folio = createTextFrame(
+      doc,
+      { master: 'A-Master' },
+      { rect: { x: 20, y: 260, width: 60, height: 14 }, text: '', name: 'Folio' },
+    );
+    appendPageNumberMarker(doc.story(folio.getAttribute('ParentStory')!)!, {});
+    const glyphCounts = [1, 2, 3].map((page) => {
+      const svg = renderPageSvg(doc, page).svg;
+      return (svg.match(/<use href="#gl/g) ?? []).length;
+    });
+    // one digit on every page (the marker resolves, it is not left empty)
+    expect(glyphCounts).toEqual([1, 1, 1]);
+    // and the three pages draw three different digits (the glyph outlines differ)
+    const outlines = [1, 2, 3].map(
+      (page) => /<path id="gl[^"]+" d="([^"]*)"/.exec(renderPageSvg(doc, page).svg)?.[1],
+    );
+    expect(new Set(outlines).size).toBe(3);
   });
 });
 

@@ -5,7 +5,7 @@ import { formatMatrix } from './geometry.ts';
 import { addPages, documentPreference, listPages, pageTransform, removePages } from './pages.ts';
 import blankTemplatePath from './template/blank.idml' with { type: 'file' };
 import { formatLength, type LengthInput, resolvePageSize, toPoints, type Unit } from './units.ts';
-import { attr, children, type Element, firstChild, formatNumber, setAttrs } from './xml.ts';
+import { attr, children, type Element, firstChild, formatNumber, removeElement, setAttrs } from './xml.ts';
 
 export interface NewDocumentOptions {
   pageSize?: string;
@@ -42,7 +42,6 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
   const unit = options.unit ?? 'mm';
   const bytes = options.templateBytes ?? loadBlankTemplateBytes();
   const doc = IdmlDocument.fromBytes(bytes);
-  const keep = options.templateBytes !== undefined && options.keepContent === true;
 
   const size =
     options.pageSize || options.width !== undefined
@@ -50,8 +49,12 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
       : undefined;
   const dp = documentPreference(doc);
   if (size) setAttrs(dp, { PageWidth: size.width, PageHeight: size.height });
+  // A new document is single-page unless facing pages are asked for; a cloned template keeps
+  // whatever it had.
+  const keepTemplateContent = options.templateBytes !== undefined && options.keepContent === true;
   if (options.facingPages !== undefined)
     dp.setAttribute('FacingPages', options.facingPages ? 'true' : 'false');
+  else if (!keepTemplateContent) dp.setAttribute('FacingPages', 'false');
   if (options.bleed !== undefined) {
     const b = toPoints(options.bleed, unit);
     setAttrs(dp, {
@@ -71,7 +74,7 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
     setAttrs(view, { HorizontalMeasurementUnits: u, VerticalMeasurementUnits: u });
   }
 
-  if (!keep) {
+  if (!keepTemplateContent) {
     // Reduce to exactly one page, then resize it, then add the requested number of pages.
     const pages = listPages(doc);
     if (pages.length > 1)
@@ -94,8 +97,20 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
         if (!['Page', 'FlattenerPreference', 'Properties'].includes(item.tagName)) spread.removeChild(item);
       }
     }
-    // Master spread pages get the same size
+    // Master spread pages get the same size, and the same number of pages per spread as the
+    // document itself: a single-page document needs a single-page master, or its items would sit
+    // on the wrong half of a facing master.
     for (const master of doc.masterSpreads()) {
+      if (!facing) {
+        for (const extra of children(master, 'Page').slice(1)) removeElement(extra);
+        master.setAttribute('PageCount', '1');
+      }
+      // The bundled template comes from a localized InDesign, so give new documents the neutral
+      // master name people expect.
+      if (options.templateBytes === undefined) {
+        const prefix = attr(master, 'NamePrefix') ?? 'A';
+        setAttrs(master, { BaseName: 'Master', Name: `${prefix}-Master` });
+      }
       const mpages = children(master, 'Page');
       mpages.forEach((page, i) => {
         const side = mpages.length === 1 ? (facing ? 'right' : 'single') : i === 0 ? 'left' : 'right';
@@ -105,6 +120,9 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
         });
       });
     }
+    // The template's own section may start at another number; a new document starts at page 1.
+    const section = children(doc.root, 'Section')[0];
+    if (section) setAttrs(section, { PageNumberStart: 1, ContinueNumbering: 'false' });
     applyMargins(doc, options, unit);
     const wanted = Math.max(1, Math.floor(options.pages ?? 1));
     if (wanted > 1) addPages(doc, { count: wanted - 1 });

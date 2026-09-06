@@ -25,6 +25,10 @@ const previewParams = {
   showGuides: z.boolean().optional().describe('Draw margin and column guides.'),
   showFrameEdges: z.boolean().optional().describe('Outline text and picture frames.'),
   bleed: z.boolean().optional().describe('Include the bleed area.'),
+  save: z
+    .boolean()
+    .optional()
+    .describe('Also write the PNG next to the document, in a .previews folder (default true).'),
 };
 
 function describeResult(r: PreviewResult, what: string): string {
@@ -62,12 +66,14 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
     showGuides?: boolean;
     showFrameEdges?: boolean;
     bleed?: boolean;
+    save?: boolean;
   }): PreviewOptions => ({
     width: args.width,
     renderer: args.renderer,
     showGuides: args.showGuides,
     showFrameEdges: args.showFrameEdges,
     bleed: args.bleed,
+    save: args.save,
   });
 
   server.registerTool(
@@ -76,7 +82,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       title: 'Preview page',
       description:
         'Renders a page to a PNG image and shows it, so you can check the layout. Uses Adobe InDesign itself when installed (exact), otherwise a built-in renderer with real fonts (very close: frames, colours, pictures and text positions match; fine typographic details may differ). Also saves the PNG next to the document.',
-      inputSchema: z.object({ document: documentParam, page: pageParam.default(1), ...previewParams }),
+      inputSchema: z.strictObject({ document: documentParam, page: pageParam.default(1), ...previewParams }),
       annotations: { readOnlyHint: true },
     },
     async (args) =>
@@ -99,7 +105,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Preview spread',
       description: 'Renders the whole spread (facing pages side by side) that contains the given page.',
-      inputSchema: z.object({ document: documentParam, page: pageParam.default(1), ...previewParams }),
+      inputSchema: z.strictObject({ document: documentParam, page: pageParam.default(1), ...previewParams }),
       annotations: { readOnlyHint: true },
     },
     async (args) =>
@@ -121,7 +127,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Preview all pages',
       description: 'Renders every page as a thumbnail on one contact sheet.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         width: z.number().int().min(400).max(4000).optional(),
         columns: z.number().int().min(1).max(8).optional(),
@@ -152,7 +158,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'Preview item (zoomed)',
       description: 'Renders a close-up of one item and its surroundings.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -185,7 +191,7 @@ export function registerPreviewTools(server: McpServer, ctx: ToolContext): void 
       title: 'Preview capabilities',
       description:
         'Reports whether Adobe InDesign is available for exact previews and which fonts the built-in renderer can use.',
-      inputSchema: z.object({}),
+      inputSchema: z.strictObject({}),
       annotations: { readOnlyHint: true },
     },
     async () =>

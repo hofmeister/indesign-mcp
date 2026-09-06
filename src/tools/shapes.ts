@@ -35,7 +35,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Add polygon or star',
       description: 'Adds a regular polygon (triangle, pentagon, hexagon…) or a star inside the given box.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         ...targetParams,
         x: lengthParam,
@@ -85,7 +85,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add a free path',
       description:
         'Draws a path through a list of points (straight or smooth), open like a line or closed like a shape.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         ...targetParams,
         points: z
@@ -144,7 +144,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Group items',
       description: 'Groups several items on the same page so they can be moved, copied and styled together.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         items: z.array(itemParam).min(2),
         page: pageParam.optional(),
@@ -170,7 +170,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Ungroup',
       description: 'Dissolves a group; its items stay where they are.',
-      inputSchema: z.object({ document: documentParam, group: itemParam, page: pageParam.optional() }),
+      inputSchema: z.strictObject({ document: documentParam, group: itemParam, page: pageParam.optional() }),
     },
     async (args) =>
       run(() => {
@@ -192,7 +192,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Step and repeat',
       description:
         "Copies an item into a grid, like InDesign's Step and Repeat — useful for labels, tickets or a photo grid.",
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
@@ -235,7 +235,7 @@ export function registerShapeTools(server: McpServer, ctx: ToolContext): void {
       title: 'Apply object style',
       description:
         'Applies an object style to an item (fill, stroke, corners, text frame options and paragraph style in one go).',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),

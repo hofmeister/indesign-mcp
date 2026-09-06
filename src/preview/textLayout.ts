@@ -377,7 +377,11 @@ export class Composer {
   }
 
   /** Shapes a story into glyphs with paragraph boundaries marked by `null`. */
-  shapeStory(doc: IdmlDocument, story: Element): { glyphs: (ShapedGlyph | null)[]; paragraphs: TextAttrs[] } {
+  shapeStory(
+    doc: IdmlDocument,
+    story: Element,
+    markers: { pageNumber?: string; sectionMarker?: string } = {},
+  ): { glyphs: (ShapedGlyph | null)[]; paragraphs: TextAttrs[] } {
     const paragraphs = readStory(story);
     const glyphs: (ShapedGlyph | null)[] = [];
     const paraAttrs: TextAttrs[] = [];
@@ -385,7 +389,7 @@ export class Composer {
       const pa = this.styles.paragraph(para.style);
       const pAttrs = applyElementAttrs(pa, para.attrs ? fakeElement(para.attrs) : undefined);
       paraAttrs.push(pAttrs);
-      for (const run of para.runs) glyphs.push(...this.shapeRun(run, pAttrs));
+      for (const run of para.runs) glyphs.push(...this.shapeRun(resolveMarker(run, markers), pAttrs));
       if (pi < paragraphs.length - 1) glyphs.push(null);
     });
     void doc;
@@ -939,6 +943,13 @@ function anchoredItemBounds(item: Element): { width: number; height: number } {
     height = Math.max(height, b.y + b.height);
   }
   return { width, height };
+}
+
+/** Replaces a page-number or section marker with the text InDesign would show there. */
+function resolveMarker(run: Run, markers: { pageNumber?: string; sectionMarker?: string }): Run {
+  if (!run.marker) return run;
+  const text = run.marker === 'page-number' ? (markers.pageNumber ?? '#') : (markers.sectionMarker ?? '');
+  return { ...run, text };
 }
 
 /** Wraps a plain attribute record (and typed props) in a fake element for applyElementAttrs. */

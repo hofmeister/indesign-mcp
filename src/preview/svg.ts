@@ -18,7 +18,7 @@ import {
 import { graphicChild, isPageItem, itemSpreadBounds, linkUri, linkUriToPath } from '../idml/items.ts';
 import { layerElements } from '../idml/layers.ts';
 import { findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
-import { readStoryPlainText } from '../idml/stories.ts';
+import { readStoryPlainText, storyHasPageNumberMarker } from '../idml/stories.ts';
 import { parseCellName, tableInfo, tablesIn } from '../idml/tables.ts';
 import { attr, children, type Element, firstChild, getProperty, numAttr } from '../idml/xml.ts';
 import { rgbToCss, SwatchResolver } from './color.ts';
@@ -60,6 +60,8 @@ class RenderContext {
   readonly hiddenLayers = new Set<string>();
   readonly pages: PageInfo[];
   private composedChains = new Map<string, Map<string, Line[]>>();
+  /** Page whose items are being drawn, so page-number markers can resolve. */
+  currentPage: PageInfo | undefined;
   private oversetFrames = new Set<string>();
   private idCounter = 0;
 
@@ -86,12 +88,31 @@ class RenderContext {
   linesFor(frame: Element): { lines: Line[]; overset: boolean } {
     const storyId = attr(frame, 'ParentStory') ?? '';
     const frameId = attr(frame, 'Self') ?? '';
-    let chain = this.composedChains.get(storyId);
+    // A story with a page-number marker composes differently on every page it appears on.
+    const story = this.doc.story(storyId);
+    const perPage = story ? storyHasPageNumberMarker(story) : false;
+    const key = perPage ? `${storyId}|${this.pageNameFor(frame)}` : storyId;
+    let chain = this.composedChains.get(key);
     if (!chain) {
       chain = this.composeChain(storyId, frame);
-      this.composedChains.set(storyId, chain);
+      this.composedChains.set(key, chain);
     }
     return { lines: chain.get(frameId) ?? [], overset: this.oversetFrames.has(frameId) };
+  }
+
+  /** Name of the page a frame is drawn on ("4", "iv", "A-1"), for page-number markers. */
+  pageNameFor(frame: Element): string {
+    if (this.currentPage) return this.currentPage.name;
+    const bounds = itemSpreadBounds(frame);
+    if (!bounds) return '';
+    const page = this.pages.find(
+      (p) =>
+        bounds.x + bounds.width / 2 >= p.origin.x &&
+        bounds.x + bounds.width / 2 <= p.origin.x + p.width &&
+        bounds.y + bounds.height / 2 >= p.origin.y &&
+        bounds.y + bounds.height / 2 <= p.origin.y + p.height,
+    );
+    return page?.name ?? '';
   }
 
   private composeChain(storyId: string, anyFrame: Element): Map<string, Line[]> {
@@ -122,7 +143,9 @@ class RenderContext {
     }
     let shaped: ReturnType<Composer['shapeStory']>;
     try {
-      shaped = this.composer.shapeStory(this.doc, story);
+      shaped = this.composer.shapeStory(this.doc, story, {
+        pageNumber: this.pageNameFor(anyFrame),
+      });
     } catch (e) {
       this.warnings.push(`Text of story ${storyId} could not be shaped: ${(e as Error).message}`);
       return result;
@@ -652,6 +675,46 @@ function edgeStroke(
   return { weight, css: paint.css };
 }
 
+interface TableGrid {
+  info: ReturnType<typeof tableInfo>;
+  widths: number[];
+  heights: number[];
+  positions: Map<Element, { row: number; column: number; rowSpan: number; columnSpan: number }>;
+}
+
+/** Column widths and row heights of a table, with rows grown to fit their text (AutoGrow). */
+function tableGrid(ctx: RenderContext, table: Element, maxWidth: number): TableGrid {
+  const info = tableInfo(table);
+  const widths =
+    info.columnWidths.length === info.columns
+      ? info.columnWidths.map((w) => (w > 0 ? w : maxWidth / Math.max(1, info.columns)))
+      : Array.from({ length: info.columns }, () => maxWidth / Math.max(1, info.columns));
+  const heights = Array.from({ length: info.rows }, (_, r) => info.rowHeights[r] ?? 0);
+  const positions = new Map<Element, { row: number; column: number; rowSpan: number; columnSpan: number }>();
+  for (const cell of children(table, 'Cell')) {
+    const pos = parseCellName(attr(cell, 'Name'));
+    if (!pos) continue;
+    positions.set(cell, {
+      ...pos,
+      rowSpan: Math.max(1, numAttr(cell, 'RowSpan', 1)),
+      columnSpan: Math.max(1, numAttr(cell, 'ColumnSpan', 1)),
+    });
+  }
+  for (const [cell, pos] of positions) {
+    if (pos.rowSpan !== 1) continue;
+    const width = widths.slice(pos.column, pos.column + pos.columnSpan).reduce((a, b) => a + b, 0);
+    const needed = cellTextHeight(ctx, cell, width);
+    if (needed > (heights[pos.row] ?? 0)) heights[pos.row] = needed;
+  }
+  return { info, widths, heights, positions };
+}
+
+/** How tall a table will be once its rows have grown to fit their text. */
+export function measureTableHeight(doc: IdmlDocument, table: Element, maxWidth: number): number {
+  const ctx = new RenderContext(doc, {});
+  return tableGrid(ctx, table, maxWidth).heights.reduce((a, b) => a + b, 0);
+}
+
 /**
  * Draws a table at (x0, y0). Column widths and row heights come from the table; rows grow when
  * their text needs more room, as AutoGrow does in InDesign.
@@ -663,31 +726,8 @@ function renderTable(
   y0: number,
   maxWidth: number,
 ): { svg: string; height: number } {
-  const info = tableInfo(table);
+  const { widths, heights, positions, info } = tableGrid(ctx, table, maxWidth);
   if (!info.rows || !info.columns) return { svg: '', height: 0 };
-  const widths =
-    info.columnWidths.length === info.columns
-      ? info.columnWidths.map((w) => (w > 0 ? w : maxWidth / info.columns))
-      : Array.from({ length: info.columns }, () => maxWidth / info.columns);
-  const heights = Array.from({ length: info.rows }, (_, r) => info.rowHeights[r] ?? 0);
-  const cells = children(table, 'Cell');
-  const positions = new Map<Element, { row: number; column: number; rowSpan: number; columnSpan: number }>();
-  for (const cell of cells) {
-    const pos = parseCellName(attr(cell, 'Name'));
-    if (!pos) continue;
-    positions.set(cell, {
-      ...pos,
-      rowSpan: Math.max(1, numAttr(cell, 'RowSpan', 1)),
-      columnSpan: Math.max(1, numAttr(cell, 'ColumnSpan', 1)),
-    });
-  }
-  // grow single-row cells to fit their text
-  for (const [cell, pos] of positions) {
-    if (pos.rowSpan !== 1) continue;
-    const width = widths.slice(pos.column, pos.column + pos.columnSpan).reduce((a, b) => a + b, 0);
-    const needed = cellTextHeight(ctx, cell, width);
-    if (needed > (heights[pos.row] ?? 0)) heights[pos.row] = needed;
-  }
   const xAt = (c: number) => x0 + widths.slice(0, c).reduce((a, b) => a + b, 0);
   const yAt = (r: number) => y0 + heights.slice(0, r).reduce((a, b) => a + b, 0);
 
@@ -899,6 +939,8 @@ function renderMasterItems(ctx: RenderContext, page: PageInfo): string {
     (attr(ctx.doc.findBySelf(page.id)?.element ?? mp, 'OverrideList') ?? '').split(/\s+/).filter(Boolean),
   );
   const out: string[] = [];
+  const previousPage = ctx.currentPage;
+  ctx.currentPage = page;
   for (const el of sortedItems(ctx, master)) {
     if (overridden.has(attr(el, 'Self') ?? '')) continue;
     const b = anchorBounds(readPaths(el), parseMatrix(attr(el, 'ItemTransform')));
@@ -912,6 +954,7 @@ function renderMasterItems(ctx: RenderContext, page: PageInfo): string {
       continue;
     out.push(renderItem(ctx, el, delta));
   }
+  ctx.currentPage = previousPage;
   return out.join('');
 }
 

@@ -171,6 +171,37 @@ describe('the tools refuse impossible input', () => {
     expect(ok.isError).toBe(false);
   });
 
+  test('an unknown parameter is refused instead of being ignored', async () => {
+    const r = await call('add_text_frame', {
+      document,
+      x: 20,
+      y: 20,
+      width: 100,
+      height: 40,
+      paragrahs: [{ text: 'typo in the parameter name' }],
+    });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('paragrahs');
+  });
+
+  test('add_text_frame takes paragraphs with their own styles', async () => {
+    await call('create_paragraph_style', { document, name: 'Step', size: 12 });
+    const r = await call('add_text_frame', {
+      document,
+      x: 20,
+      y: 120,
+      width: 200,
+      height: 80,
+      paragraphStyle: 'Step',
+      paragraphs: [{ text: 'First' }, { text: 'Second' }],
+      name: 'Steps',
+    });
+    expect(r.isError).toBe(false);
+    const text = await call('get_text', { document, item: 'Steps' });
+    expect(text.text).toContain('1. [Step] First');
+    expect(text.text).toContain('2. [Step] Second');
+  });
+
   test('margins that do not fit are refused', async () => {
     const r = await call('set_margins_and_columns', { document, margins: '200mm' });
     expect(r.isError).toBe(true);

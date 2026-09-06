@@ -2,11 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { IdmlDocument } from '../../src/idml/document.ts';
+import { masterInfos } from '../../src/idml/inspect.ts';
 import { createTextFrame, listItems } from '../../src/idml/items.ts';
 import { listPages } from '../../src/idml/pages.ts';
 import { listStyles, listSwatches } from '../../src/idml/styles.ts';
 import { createDocument } from '../../src/idml/template.ts';
 import { validateDocument } from '../../src/idml/validate.ts';
+import { attr, children } from '../../src/idml/xml.ts';
 
 const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'idml');
 
@@ -26,7 +28,7 @@ describe('blank template', () => {
     expect(pages[0]!.height).toBeCloseTo(841.8898, 2);
     expect(pages[0]!.margins.top).toBeCloseTo(42.52, 1);
     expect(pages[0]!.columns).toEqual({ count: 2, gutter: 14.173228 });
-    expect(pages[0]!.side).toBe('right'); // template is facing pages
+    expect(pages[0]!.side).toBe('single'); // new documents are single-page unless asked otherwise
     expect(listItems(doc)).toHaveLength(0);
     const again = IdmlDocument.fromBytes(doc.toBytes());
     expect(listPages(again)).toHaveLength(3);
@@ -56,6 +58,27 @@ describe('blank template', () => {
       doc.root.getElementsByTagName('Layer')[0]!.getAttribute('Self'),
     );
     expect(validateDocument(doc).filter((i) => i.level === 'error')).toEqual([]);
+  });
+
+  test('a new document starts at page 1 with a neutral, single-page master', () => {
+    const doc = createDocument({ pageSize: 'A5', pages: 3 });
+    // the bundled template is a localized export whose section starts at 2
+    expect(listPages(doc).map((p) => p.name)).toEqual(['1', '2', '3']);
+    const masters = masterInfos(doc);
+    expect(masters).toHaveLength(1);
+    expect(masters[0]!.name).toBe('A-Master');
+    expect(masters[0]!.pageCount).toBe(1);
+    // and a single-page master lines up with the document's pages
+    const master = doc.masterSpreads()[0]!;
+    const page = children(master, 'Page')[0]!;
+    expect(attr(page, 'ItemTransform')).toBe(
+      attr(doc.findBySelf(listPages(doc)[0]!.id)!.element, 'ItemTransform'),
+    );
+  });
+
+  test('a facing-pages document keeps a two-page master', () => {
+    const doc = createDocument({ pageSize: 'A5', pages: 4, facingPages: true });
+    expect(masterInfos(doc)[0]!.pageCount).toBe(2);
   });
 });
 

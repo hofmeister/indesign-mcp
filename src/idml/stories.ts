@@ -24,6 +24,8 @@ export interface Run {
   props?: Record<string, { type: string; value: string }>;
   /** An anchored page item sitting at this point in the text. */
   anchored?: Element;
+  /** A marker InDesign resolves when it lays the text out (the automatic page number). */
+  marker?: 'page-number' | 'section-marker';
 }
 
 export interface Paragraph {
@@ -69,6 +71,7 @@ export function readStory(story: Element): Paragraph[] {
         if (
           last &&
           !last.anchored &&
+          !last.marker &&
           last.characterStyle === characterStyle &&
           sameRecord(last.attrs, attrs) &&
           sameProps(last.props, props)
@@ -86,9 +89,32 @@ export function readStory(story: Element): Paragraph[] {
         'PageReference',
         'ParagraphDestination',
       ];
+      const pushMarker = (marker: Run['marker']) => {
+        ensure().runs.push({
+          text: marker === 'page-number' ? '#' : '',
+          characterStyle,
+          attrs,
+          props,
+          marker,
+        });
+      };
+      // <Content> can hold processing instructions: <?ACE 18?> is the automatic page number.
+      const walkContent = (content: Element) => {
+        for (let n = content.firstChild; n; n = n.nextSibling) {
+          if (n.nodeType === 3) push(n.textContent ?? '');
+          else if (n.nodeType === 7) {
+            const pi = n as unknown as { target?: string; data?: string };
+            if (pi.target === 'ACE') {
+              const code = (pi.data ?? '').trim();
+              if (code === '18') pushMarker('page-number');
+              else if (code === '19') pushMarker('section-marker');
+            }
+          }
+        }
+      };
       const walkRange = (el: Element) => {
         for (const c of children(el)) {
-          if (c.tagName === 'Content') push(c.textContent ?? '');
+          if (c.tagName === 'Content') walkContent(c);
           else if (c.tagName === 'Br') {
             ensure();
             current = null;
@@ -100,7 +126,7 @@ export function readStory(story: Element): Paragraph[] {
           else if (c.tagName === 'XMLElement')
             for (const inner of children(c)) {
               if (inner.tagName === 'CharacterStyleRange') visitCsr(inner);
-              else if (inner.tagName === 'Content') push(inner.textContent ?? '');
+              else if (inner.tagName === 'Content') walkContent(inner);
             }
         }
       };

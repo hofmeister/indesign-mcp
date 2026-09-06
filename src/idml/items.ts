@@ -27,7 +27,7 @@ import {
   pageRectToSpread,
   removeItemElement,
 } from './pages.ts';
-import { createStory, readStoryPlainText } from './stories.ts';
+import { BASIC_PARAGRAPH_STYLE, createStory, parseInlineMarkup, readStoryPlainText } from './stories.ts';
 import {
   allElements,
   attr,
@@ -346,7 +346,12 @@ export function resolveContainer(
         return { container: ms, part, origin: { x: pi[4], y: pi[5] } };
       }
     }
-    throw new Error(`Master page "${target.master}" not found`);
+    const available = doc
+      .masterSpreads()
+      .map((m) => attr(m, 'Name'))
+      .filter(Boolean)
+      .join(', ');
+    throw new Error(`Master page "${target.master}" not found. Available: ${available || 'none'}`);
   }
   const page = findPage(doc, target.page);
   const spread = children(doc.xml(page.spreadPart).documentElement, 'Spread')[0]!;
@@ -389,6 +394,8 @@ export function applyAppearance(
 
 export interface NewTextFrameOptions extends NewItemOptions {
   text?: string;
+  /** Paragraphs with their own styles, instead of `text`. */
+  paragraphs?: { text: string; style?: string }[];
   paragraphStyle?: string;
   columns?: number;
   gutter?: number;
@@ -400,7 +407,15 @@ export interface NewTextFrameOptions extends NewItemOptions {
 export function createTextFrame(doc: IdmlDocument, target: Target, options: NewTextFrameOptions): Element {
   const { container, origin } = resolveContainer(doc, target);
   const spreadRect = { ...options.rect, x: origin.x + options.rect.x, y: origin.y + options.rect.y };
-  const story = createStory(doc, { text: options.text ?? '', paragraphStyle: options.paragraphStyle });
+  const story = createStory(doc, {
+    text: options.paragraphs?.length
+      ? options.paragraphs.map((p) => ({
+          style: p.style ?? options.paragraphStyle ?? BASIC_PARAGRAPH_STYLE,
+          runs: parseInlineMarkup(p.text),
+        }))
+      : (options.text ?? ''),
+    paragraphStyle: options.paragraphStyle,
+  });
   const storyId = attr(story, 'Self')!;
   const el = fragment(
     container.ownerDocument!,

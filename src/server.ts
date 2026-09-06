@@ -52,7 +52,7 @@ export function createServer(config: Config = loadConfig(), deps: ServerDeps = {
     {
       title: 'Server info',
       description: 'Returns the version of the InDesign MCP server, its default unit and folders.',
-      inputSchema: z.object({}),
+      inputSchema: z.strictObject({}),
       outputSchema: z.object({
         version: z.string(),
         runtime: z.string(),

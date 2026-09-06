@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { IdmlDocument } from '../idml/document.ts';
-import { createTextFrame, findItem } from '../idml/items.ts';
+import { anchorBounds, readPaths } from '../idml/geometry.ts';
+import { createTextFrame, findItem, resizeItem } from '../idml/items.ts';
 import {
   createTable,
   deleteTableColumns,
@@ -17,7 +18,9 @@ import {
   tableInfo,
   tableToText,
 } from '../idml/tables.ts';
+import { formatLength } from '../idml/units.ts';
 import type { Element } from '../idml/xml.ts';
+import { measureTableHeight } from '../preview/svg.ts';
 import { checkPlacement, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import { colorParam, documentParam, itemParam, lengthParam, ok, pageParam, run } from './shared.ts';
@@ -37,7 +40,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add table',
       description:
         'Puts a table in a text frame (creating the frame when x/y/width/height are given). Fill it with `data` row by row; the first rows can be header rows that repeat when the table flows.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         frame: itemParam.optional().describe('Existing text frame to put the table in.'),
         page: pageParam.optional(),
@@ -120,6 +123,17 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
           headerFill: args.headerFill,
           alternatingFill: args.alternatingFill,
         });
+        // The table decides how tall it really is: grow the frame we made, or say so when the
+        // frame came from the caller and the table does not fit.
+        const frameBounds = anchorBounds(readPaths(frame));
+        const tableHeight = measureTableHeight(doc, table, frameBounds.width);
+        if (!args.frame) {
+          resizeItem(frame, undefined, tableHeight);
+        } else if (tableHeight > frameBounds.height + 0.5) {
+          notes.push(
+            `the table is ${formatLength(tableHeight - frameBounds.height, ctx.unit)} taller than frame "${frame.getAttribute('Name')}", so the last rows are cut off; make the frame taller or the rows shorter.`,
+          );
+        }
         ctx.save(doc);
         const info = tableInfo(table);
         return ok(
@@ -142,7 +156,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Read table',
       description: 'Returns the contents of a table as rows of text, with its size and header rows.',
-      inputSchema: z.object({ document: documentParam, frame: itemParam, page: pageParam.optional() }),
+      inputSchema: z.strictObject({ document: documentParam, frame: itemParam, page: pageParam.optional() }),
       annotations: { readOnlyHint: true },
     },
     async ({ document, frame, page }) =>
@@ -167,7 +181,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Fill table cells',
       description: 'Writes text into table cells: one cell, or a block of cells starting at a position.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         frame: itemParam,
         page: pageParam.optional(),
@@ -209,7 +223,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       title: 'Style table cells',
       description:
         'Colours cells, changes their strokes, insets, vertical alignment or paragraph style — the whole table, whole rows/columns, or a block.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         frame: itemParam,
         page: pageParam.optional(),
@@ -263,7 +277,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
       title: 'Add or remove table rows and columns',
       description:
         'Inserts or deletes rows and columns, sets column widths and row heights, or merges a block of cells.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         frame: itemParam,
         page: pageParam.optional(),
@@ -342,7 +356,7 @@ export function registerTableTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Merge table cells',
       description: "Joins a rectangular block of cells into one, keeping the top-left cell's text.",
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         frame: itemParam,
         page: pageParam.optional(),

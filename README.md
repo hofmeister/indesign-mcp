@@ -80,6 +80,17 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 
 The `.mcpb` bundle exposes the first four as fields in Claude Desktop's extension settings.
 
+## An example
+
+`examples/presentation.ts` builds an eight-slide deck through the same tools Claude uses — master
+page with a running footer and page number, a type scale, a numbered agenda, a bulleted list, a
+process diagram, a metrics table, a bar chart drawn from rectangles, a quote slide and a closing
+slide — then renders every slide to PNG:
+
+```bash
+bun run example ~/Desktop/deck    # or: bun run examples/presentation.ts <folder>
+```
+
 ## Development
 
 Requirements: [Bun](https://bun.sh) 1.3+.

@@ -28,7 +28,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'List reference documents',
       description:
         'Lists the reference InDesign documents available (bundled with the server and from configured folders). Use them to reuse styles, swatches, master pages or whole pages instead of designing from scratch.',
-      inputSchema: z.object({}),
+      inputSchema: z.strictObject({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -64,7 +64,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'Describe reference document',
       description:
         'Full description of a reference document: pages and items, master pages, styles (with fonts and sizes), swatches and fonts.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         reference: z
           .string()
           .describe('Reference name (from list_reference_documents) or a path to an .idml file.'),
@@ -83,7 +83,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
     {
       title: 'Add reference folder',
       description: 'Registers a folder of .idml files as references for this session.',
-      inputSchema: z.object({ folder: z.string() }),
+      inputSchema: z.strictObject({ folder: z.string() }),
     },
     async ({ folder }) =>
       run(() => {
@@ -98,7 +98,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'New document from reference',
       description:
         'Starts a new document from a reference: either a full copy (keepContent true) or its styles, swatches, masters and page setup with empty pages (default).',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         reference: z.string(),
         path: z.string().describe('Where to save the new document.'),
         keepContent: z
@@ -161,7 +161,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'Import styles from reference',
       description:
         'Copies paragraph/character/object styles, swatches and fonts from a reference document into the current document. By default everything; limit with the flags or `only` names.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         reference: z.string(),
         paragraph: z.boolean().optional(),
@@ -203,7 +203,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'Copy master page from reference',
       description:
         'Copies a master page (with its items, styles and swatches) from a reference document into the current document.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         reference: z.string(),
         master: z.string().describe('Master name in the reference, e.g. "A-Master".'),
@@ -230,7 +230,7 @@ export function registerReferenceTools(server: McpServer, ctx: ToolContext, cata
       title: 'Copy page from reference',
       description:
         'Copies everything on a reference page onto a new page at the end of the current document (or onto an existing page), including the styles, swatches and master it needs. Linked images stay linked to their original files.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         document: documentParam,
         reference: z.string(),
         page: pageParam.describe('Page in the reference.'),
