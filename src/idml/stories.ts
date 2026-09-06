@@ -72,14 +72,29 @@ export function readStory(story: Element): Paragraph[] {
           para.runs.push({ text, characterStyle, attrs, props });
         }
       };
-      for (const c of children(csr)) {
-        if (c.tagName === 'Content') push(c.textContent ?? '');
-        else if (c.tagName === 'Br') {
-          ensure();
-          current = null;
-        } else if (c.tagName === 'XMLElement')
-          for (const inner of children(c)) if (inner.tagName === 'CharacterStyleRange') visitCsr(inner);
-      }
+      // Wrappers that hold text but do not start a new run (hyperlinks, cross references, notes).
+      const INLINE_WRAPPERS = [
+        'HyperlinkTextSource',
+        'HyperlinkTextDestination',
+        'CrossReferenceSource',
+        'PageReference',
+        'ParagraphDestination',
+      ];
+      const walkRange = (el: Element) => {
+        for (const c of children(el)) {
+          if (c.tagName === 'Content') push(c.textContent ?? '');
+          else if (c.tagName === 'Br') {
+            ensure();
+            current = null;
+          } else if (INLINE_WRAPPERS.includes(c.tagName)) walkRange(c);
+          else if (c.tagName === 'XMLElement')
+            for (const inner of children(c)) {
+              if (inner.tagName === 'CharacterStyleRange') visitCsr(inner);
+              else if (inner.tagName === 'Content') push(inner.textContent ?? '');
+            }
+        }
+      };
+      walkRange(csr);
     };
     const walk = (el: Element) => {
       for (const c of children(el)) {
