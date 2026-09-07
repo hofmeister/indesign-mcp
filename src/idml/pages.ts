@@ -1,6 +1,7 @@
 // Spreads and pages: listing, geometry and adding pages.
 import type { IdmlDocument } from './document.ts';
 import {
+  anchorBounds,
   apply,
   formatMatrix,
   IDENTITY,
@@ -9,6 +10,7 @@ import {
   type Point,
   parseMatrix,
   type Rect,
+  readPaths,
 } from './geometry.ts';
 import {
   attr,
@@ -90,7 +92,7 @@ export function pageInfoFor(
     height,
     origin,
     transform,
-    appliedMaster: attr(page, 'AppliedMaster') === 'n' ? undefined : attr(page, 'AppliedMaster'),
+    appliedMaster: appliedMasterOf(page),
     margins: {
       top: numAttr(margin!, 'Top', 0),
       bottom: numAttr(margin!, 'Bottom', 0),
@@ -193,9 +195,28 @@ export function pageForSpreadRect(pages: PageInfo[], spreadId: string, r: Rect):
  * reads the spreads, so anything above 1 leaves that many blank pages in front of the real ones.
  * InDesign itself always writes 1, whatever the document holds — so we do too, on every save.
  */
+/**
+ * Where a spread binds: the number of its pages that lie left of the spine.
+ *
+ * InDesign decides from this whether a page is a recto or a verso, and so which page of a facing
+ * master it inherits — not from the page's own coordinates. A first spread written with the wrong
+ * binding turns page 1 into a left-hand page, and the running head jumps to the other side.
+ */
+export function bindingLocation(pages: Element[]): number {
+  return pages.filter((page) => parseMatrix(attr(page, 'ItemTransform'))[4] < 0).length;
+}
+
 export function pinPagesPerDocument(doc: IdmlDocument): void {
   const prefs = documentPreference(doc);
   if (prefs.getAttribute('PagesPerDocument') !== '1') prefs.setAttribute('PagesPerDocument', '1');
+  // The binding of every spread has to agree with where its pages sit, or InDesign reads the
+  // sides the other way round; it costs nothing to keep them in step on the way out.
+  for (const part of doc.spreadParts()) {
+    const spread = children(doc.xml(part).documentElement, 'Spread')[0];
+    if (!spread) continue;
+    const wanted = String(bindingLocation(pageElements(spread)));
+    if (attr(spread, 'BindingLocation') !== wanted) spread.setAttribute('BindingLocation', wanted);
+  }
 }
 
 export function updatePageCounts(doc: IdmlDocument): void {
@@ -203,9 +224,10 @@ export function updatePageCounts(doc: IdmlDocument): void {
   for (const part of doc.spreadParts()) {
     const spread = children(doc.xml(part).documentElement, 'Spread')[0];
     if (!spread) continue;
-    const n = pageElements(spread).length;
-    spread.setAttribute('PageCount', String(n));
-    total += n;
+    const pages = pageElements(spread);
+    spread.setAttribute('PageCount', String(pages.length));
+    spread.setAttribute('BindingLocation', String(bindingLocation(pages)));
+    total += pages.length;
   }
   pinPagesPerDocument(doc);
   // Keep a single section covering all pages (multi-section documents keep their first section start).
@@ -248,6 +270,64 @@ export function pageTransform(
   const ty = -height / 2;
   if (!facing || side === 'single') return [1, 0, 0, 1, -width / 2, ty];
   return side === 'left' ? [1, 0, 0, 1, -width, ty] : [1, 0, 0, 1, 0, ty];
+}
+
+/**
+ * Lays a master spread out for a document: page size, page sides, and — when a facing master is
+ * reduced to a single page — moving its items with the page they sit on, so a running head does
+ * not end up beside the paper.
+ */
+export function layoutMasterSpread(
+  master: Element,
+  options: { facing: boolean; width: number; height: number },
+): { orphaned: number } {
+  const { facing, width, height } = options;
+  const before = children(master, 'Page');
+  const wasFacing = before.length > 1;
+  const originBefore = before[0] ? parseMatrix(attr(before[0], 'ItemTransform')) : undefined;
+  if (!facing && wasFacing) {
+    for (const extra of before.slice(1)) removeElement(extra);
+    master.setAttribute('PageCount', '1');
+  }
+  const pages = children(master, 'Page');
+  pages.forEach((page, i) => {
+    const side = pages.length === 1 ? (facing ? 'right' : 'single') : i === 0 ? 'left' : 'right';
+    setAttrs(page, {
+      GeometricBounds: `0 0 ${formatNumber(height)} ${formatNumber(width)}`,
+      ItemTransform: formatMatrix(pageTransform(width, height, facing || pages.length > 1, side)),
+      MasterPageTransform: IDENTITY_TRANSFORM,
+    });
+  });
+  const kept = pages[0];
+  if (!facing && wasFacing && originBefore && kept) {
+    const after = parseMatrix(attr(kept, 'ItemTransform'));
+    translateSpreadItems(master, after[4] - originBefore[4], after[5] - originBefore[5]);
+    // Items that belonged to a page that no longer exists are now beside the paper. An item's
+    // position is in its path, not its transform, so measure the shape rather than the matrix.
+    const left = after[4];
+    const right = left + width;
+    let orphaned = 0;
+    for (const item of children(master)) {
+      if (item.tagName === 'Page' || !item.hasAttribute('ItemTransform')) continue;
+      const paths = readPaths(item);
+      if (!paths.length) continue;
+      const bounds = anchorBounds(paths, parseMatrix(attr(item, 'ItemTransform')));
+      const middle = bounds.x + bounds.width / 2;
+      if (middle >= right || middle < left) orphaned++;
+    }
+    return { orphaned };
+  }
+  return { orphaned: 0 };
+}
+
+/** Moves every page item of a spread by (dx, dy), keeping it where it sits on its page. */
+export function translateSpreadItems(spread: Element, dx: number, dy: number): void {
+  if (!dx && !dy) return;
+  for (const item of children(spread)) {
+    if (item.tagName === 'Page' || !item.hasAttribute('ItemTransform')) continue;
+    const m = parseMatrix(attr(item, 'ItemTransform'));
+    item.setAttribute('ItemTransform', formatMatrix([m[0], m[1], m[2], m[3], m[4] + dx, m[5] + dy]));
+  }
 }
 
 export function newSpread(
@@ -362,6 +442,12 @@ export function addPages(doc: IdmlDocument, options: AddPagesOptions = {}): Page
 }
 
 /** Resolves a master by name ("A-Master"), prefix ("A") or id. "none" -> undefined. */
+/** IDML writes "n" where there is no master; everything else is an id. */
+export function appliedMasterOf(el: Element | undefined): string | undefined {
+  const value = attr(el, 'AppliedMaster');
+  return !value || value === 'n' ? undefined : value;
+}
+
 export function resolveMaster(doc: IdmlDocument, ref: string | undefined): string | undefined {
   if (!ref || ref === 'none') return undefined;
   for (const m of doc.masterSpreads()) {
@@ -416,8 +502,6 @@ export function removePages(doc: IdmlDocument, refs: (number | string)[]): numbe
 }
 
 // Small helpers shared with items.ts (kept here to avoid an import cycle).
-import { anchorBounds, readPaths } from './geometry.ts';
-
 export function itemSpreadBounds(item: Element): Rect | undefined {
   const paths = readPaths(item);
   if (!paths.length) return undefined;

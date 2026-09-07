@@ -3,6 +3,14 @@ import { formatMatrix } from '../idml/geometry.ts';
 import { masterInfos } from '../idml/inspect.ts';
 import { createLayer, findLayer, listLayers } from '../idml/layers.ts';
 import {
+  createMaster,
+  deleteMaster,
+  masterSpread,
+  renameMaster,
+  setMasterPageCount,
+  setMasterParent,
+} from '../idml/masters.ts';
+import {
   addPages,
   documentPreference,
   findPage,
@@ -213,7 +221,8 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
     'masters',
     {
       title: 'List master pages',
-      description: 'Lists master pages (parent pages) with the number of items on each.',
+      description:
+        'Lists master pages (parent pages): how many pages each spread has, how many items are on it, the master it is based on, and the document pages using it.',
       inputSchema: toolInput({ document: documentParam }),
       annotations: { readOnlyHint: true },
     },
@@ -222,7 +231,12 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
         const masters = masterInfos(ctx.open(document));
         return ok(
           masters
-            .map((m) => `${m.name} (${m.pageCount} page(s), ${m.itemCount} item(s)) [${m.id}]`)
+            .map(
+              (m) =>
+                `${m.name} (${m.pageCount} page(s), ${m.itemCount} item(s)${m.basedOn ? `, based on ${m.basedOn}` : ''}) [${m.id}] — ${
+                  m.usedByPages.length ? `pages ${m.usedByPages.join(', ')}` : 'not applied to any page'
+                }`,
+            )
             .join('\n') || 'No master pages',
           { masters },
         );
@@ -255,59 +269,140 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
-  reg.tool(
-    'create_master',
+  const masterParam = z.string().describe('Master page, e.g. "A-Master" or its id.');
+
+  reg.variant(
+    'edit_masters',
+    'create',
     {
       title: 'Create master page',
       description:
-        'Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Use a master for everything that repeats across pages — running heads, footers, folios, background rules, the text-frame grid — then apply_master to the pages that should use it. Add items to it with add_text_frame / add_shape using target master rather than page.',
+        'Creates a master page (parent page), copied from an existing one. Use a master for everything that repeats across pages — running heads, footers, folios, background rules, the text-frame grid — then apply_master to the pages that should use it. Add items to it with add_text_frame / add_shape using master (and masterPage for a facing master).',
       inputSchema: toolInput({
         document: documentParam,
         prefix: z.string().max(4).describe('One-letter prefix, e.g. "B".'),
         name: z.string().describe('Name, e.g. "Chapter".'),
+        copyFrom: z.string().optional().describe('Master to copy (default: the first one).'),
+        keepItems: z.boolean().optional().describe('Copy the items of that master (default true).'),
+        pages: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('Pages in the spread: 1 single-sided, 2 facing, more for a gatefold.'),
         basedOn: z
           .string()
           .optional()
-          .describe('Existing master to duplicate (default: the first one). Its items are copied.'),
-        keepItems: z.boolean().optional().describe('Copy the items of the source master (default true).'),
+          .describe('Another master this one is based on, so its items show through and follow changes.'),
       }),
     },
-    async ({ document, prefix, name, basedOn, keepItems }) =>
+    async ({ document, prefix, name, copyFrom, keepItems, pages, basedOn }) =>
       run(() => {
         const doc = ctx.open(document);
-        const sourceId = basedOn ? resolveMaster(doc, basedOn) : attr(doc.masterSpreads()[0]!, 'Self');
-        const sourcePart = doc
-          .masterSpreadParts()
-          .find((p) => attr(children(doc.xml(p).documentElement, 'MasterSpread')[0]!, 'Self') === sourceId);
-        if (!sourcePart) throw new Error('Source master not found');
-        const id = doc.newId();
-        const part = `MasterSpreads/MasterSpread_${id}.xml`;
-        const partDoc = doc.newPartDocument('MasterSpread');
-        const source = children(doc.xml(sourcePart).documentElement, 'MasterSpread')[0]!;
-        const clone = partDoc.importNode(source, true) as import('../idml/xml.ts').Element;
-        setAttrs(clone, { Self: id, Name: `${prefix}-${name}`, NamePrefix: prefix, BaseName: name });
-        for (const el of Array.from(clone.getElementsByTagName('*')) as import('../idml/xml.ts').Element[]) {
-          if (el.hasAttribute('Self')) el.setAttribute('Self', doc.newId());
-          if (el.tagName === 'Page') el.setAttribute('Name', prefix);
-        }
-        if (keepItems === false) {
-          for (const el of children(clone))
-            if (!['Page', 'Properties', 'FlattenerPreference'].includes(el.tagName)) clone.removeChild(el);
-        } else {
-          // stories of copied text frames must be duplicated
-          const { duplicateStoriesOf } = require('../idml/masters.ts') as typeof import('../idml/masters.ts');
-          duplicateStoriesOf(doc, clone);
-        }
-        partDoc.documentElement!.appendChild(partDoc.createTextNode('\n\t'));
-        partDoc.documentElement!.appendChild(clone);
-        partDoc.documentElement!.appendChild(partDoc.createTextNode('\n'));
-        doc.addXmlPart(part, partDoc);
-        const ref = createIdPkgRef(doc.designmap, 'MasterSpread', part);
-        const refs = children(doc.root).filter((c) => c.tagName === 'idPkg:MasterSpread');
-        const { insertAfter } = require('../idml/xml.ts') as typeof import('../idml/xml.ts');
-        insertAfter(doc.root, ref, refs.at(-1));
+        const made = createMaster(doc, { prefix, name, copyFrom, keepItems, pages, basedOn });
         ctx.save(doc);
-        return ok(`Created master page ${prefix}-${name} [${id}].`, { id, name: `${prefix}-${name}` });
+        const spread = masterSpread(doc, made.id).element;
+        const count = children(spread, 'Page').length;
+        return ok(
+          `Created master page ${made.name} [${made.id}] with ${count} page(s)${basedOn ? `, based on ${basedOn}` : ''}.`,
+          made,
+        );
+      }),
+  );
+
+  reg.variant(
+    'edit_masters',
+    'delete',
+    {
+      title: 'Delete master page',
+      description:
+        'Deletes a master page. Pages using it fall back to the master you name, or to no master at all.',
+      inputSchema: toolInput({
+        document: documentParam,
+        master: masterParam,
+        replaceWith: z.string().optional().describe('Master for the pages that used it (default: none).'),
+      }),
+    },
+    async ({ document, master, replaceWith }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const name = attr(masterSpread(doc, master).element, 'Name') ?? master;
+        const { pages } = deleteMaster(doc, master, replaceWith);
+        ctx.save(doc);
+        return ok(`Deleted master ${name}; ${pages} page(s) now use ${replaceWith ?? 'no master'}.`, {
+          pages,
+        });
+      }),
+  );
+
+  reg.variant(
+    'edit_masters',
+    'rename',
+    {
+      title: 'Rename master page',
+      description: "Changes a master page's prefix, name or both.",
+      inputSchema: toolInput({
+        document: documentParam,
+        master: masterParam,
+        prefix: z.string().max(4).optional(),
+        name: z.string().optional(),
+      }),
+    },
+    async ({ document, master, prefix, name }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const renamed = renameMaster(doc, master, { prefix, name });
+        ctx.save(doc);
+        return ok(`Master renamed to ${renamed.name}.`, renamed);
+      }),
+  );
+
+  reg.variant(
+    'edit_masters',
+    'pages',
+    {
+      title: 'Pages of a master spread',
+      description:
+        'Sets how many pages a master spread has: 1 for a single-sided document, 2 for facing pages, more for a gatefold. Items on a page that is removed go with it.',
+      inputSchema: toolInput({
+        document: documentParam,
+        master: masterParam,
+        count: z.number().int().min(1).max(10),
+      }),
+    },
+    async ({ document, master, count }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        const now = setMasterPageCount(doc, master, count);
+        ctx.save(doc);
+        return ok(`${master} now has ${now} page(s).`, { pages: now });
+      }),
+  );
+
+  reg.variant(
+    'edit_masters',
+    'parent',
+    {
+      title: 'Base a master on another master',
+      description:
+        'Bases one master page on another (InDesign\'s "Based on Master"), so it shows the other\'s items and follows changes to them. Pass "none" to detach it.',
+      inputSchema: toolInput({
+        document: documentParam,
+        master: masterParam,
+        parent: z.string().describe('The master it is based on, or "none".'),
+      }),
+    },
+    async ({ document, master, parent }) =>
+      run(() => {
+        const doc = ctx.open(document);
+        setMasterParent(doc, master, parent);
+        ctx.save(doc);
+        return ok(
+          parent === 'none'
+            ? `${master} is no longer based on another master.`
+            : `${master} is now based on ${parent}.`,
+        );
       }),
   );
 

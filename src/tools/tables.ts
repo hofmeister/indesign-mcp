@@ -42,6 +42,29 @@ function tableOf(ctx: ToolContext, doc: IdmlDocument, frameRef: string, page?: n
   return findTable(doc, found.element);
 }
 
+/**
+ * A note when the table no longer fits the frame it lives in.
+ *
+ * Text that does not fit is overset and InDesign shows a red plus; a table simply carries on past
+ * the bottom of the frame, so a wider inset or a bigger style silently cuts the last rows off.
+ */
+function tableFitNotes(
+  ctx: ToolContext,
+  doc: IdmlDocument,
+  frameRef: string,
+  page?: number | string,
+): string[] {
+  const found = findItem(doc, frameRef, page);
+  const bounds = found.info.bounds;
+  if (!bounds) return [];
+  const table = findTable(doc, found.element);
+  const height = measureTableHeight(doc, table, bounds.width);
+  if (height <= bounds.height + 0.5) return [];
+  return [
+    `the table is now ${formatLength(height, ctx.unit)} tall but its frame is only ${formatLength(bounds.height, ctx.unit)}, so the last rows are cut off. Resize the frame with edit_item (op "resize").`,
+  ];
+}
+
 export function registerTableTools(reg: ToolRegistry, ctx: ToolContext): void {
   reg.tool(
     'add_table',
@@ -276,7 +299,8 @@ export function registerTableTools(reg: ToolRegistry, ctx: ToolContext): void {
           paragraphStyle: args.paragraphStyle,
         });
         ctx.save(doc);
-        return ok(`Styled ${n} cell(s).`, { cells: n });
+        const notes = tableFitNotes(ctx, doc, args.frame, args.page);
+        return ok(withNotes(`Styled ${n} cell(s).`, notes), { cells: n, notes });
       }),
   );
 

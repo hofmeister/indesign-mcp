@@ -2,7 +2,7 @@
 import type { IdmlDocument } from './document.ts';
 import { type ItemInfo, listItems } from './items.ts';
 import { type LayerInfo, listLayers } from './layers.ts';
-import { documentPageSize, isFacingPages, listPages, type PageInfo } from './pages.ts';
+import { appliedMasterOf, documentPageSize, isFacingPages, listPages, type PageInfo } from './pages.ts';
 import { fontsUsed, listFonts, listStyles, listSwatches, type StyleInfo, type SwatchInfo } from './styles.ts';
 import { formatLength, type Unit } from './units.ts';
 import { attr, children, type Element, numAttr } from './xml.ts';
@@ -13,6 +13,10 @@ export interface MasterInfo {
   prefix: string;
   pageCount: number;
   itemCount: number;
+  /** The master this one is based on, if any. */
+  basedOn?: string;
+  /** Document pages this master is applied to. */
+  usedByPages: number[];
 }
 
 export interface DocumentSummary {
@@ -83,14 +87,30 @@ export function itemSummary(item: ItemInfo, unit: Unit, layers: Map<string, stri
 }
 
 export function masterInfos(doc: IdmlDocument): MasterInfo[] {
-  return doc.masterSpreads().map((m) => ({
-    id: attr(m, 'Self') ?? '',
-    name: attr(m, 'Name') ?? '',
-    prefix: attr(m, 'NamePrefix') ?? '',
-    pageCount: children(m, 'Page').length,
-    itemCount: children(m).filter((c) => !['Page', 'Properties', 'FlattenerPreference'].includes(c.tagName))
-      .length,
-  }));
+  const names = new Map(doc.masterSpreads().map((m) => [attr(m, 'Self') ?? '', attr(m, 'Name') ?? '']));
+  // Which document pages use each master: with several masters in a document, that is the thing
+  // you actually want to know about them.
+  const usedBy = new Map<string, number[]>();
+  for (const page of listPages(doc)) {
+    if (!page.appliedMaster) continue;
+    const list = usedBy.get(page.appliedMaster) ?? [];
+    list.push(page.index);
+    usedBy.set(page.appliedMaster, list);
+  }
+  return doc.masterSpreads().map((m) => {
+    const id = attr(m, 'Self') ?? '';
+    const parent = appliedMasterOf(children(m, 'Page')[0]);
+    return {
+      id,
+      name: attr(m, 'Name') ?? '',
+      prefix: attr(m, 'NamePrefix') ?? '',
+      pageCount: children(m, 'Page').length,
+      itemCount: children(m).filter((c) => !['Page', 'Properties', 'FlattenerPreference'].includes(c.tagName))
+        .length,
+      basedOn: parent ? (names.get(parent) ?? parent) : undefined,
+      usedByPages: usedBy.get(id) ?? [],
+    };
+  });
 }
 
 export function summarizeDocument(doc: IdmlDocument, unit: Unit = 'mm'): DocumentSummary {

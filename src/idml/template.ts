@@ -1,11 +1,12 @@
 // Creating documents from the bundled blank template (a stripped real InDesign export).
 import { readFileSync } from 'node:fs';
 import { IdmlDocument } from './document.ts';
-import { formatMatrix } from './geometry.ts';
+import { formatMatrix, parseMatrix } from './geometry.ts';
 import {
   addPages,
   documentPreference,
   IDENTITY_TRANSFORM,
+  layoutMasterSpread,
   listPages,
   pageTransform,
   removePages,
@@ -61,7 +62,9 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
   const keepTemplateContent = options.templateBytes !== undefined && options.keepContent === true;
   if (options.facingPages !== undefined)
     dp.setAttribute('FacingPages', options.facingPages ? 'true' : 'false');
-  else if (!keepTemplateContent) dp.setAttribute('FacingPages', 'false');
+  // A document started from a reference keeps the reference's page setup, facing pages included;
+  // only the blank template defaults to single pages.
+  else if (options.templateBytes === undefined) dp.setAttribute('FacingPages', 'false');
   if (options.bleed !== undefined) {
     const b = toPoints(options.bleed, unit);
     setAttrs(dp, {
@@ -112,25 +115,13 @@ export function createDocument(options: NewDocumentOptions = {}): IdmlDocument {
     // document itself: a single-page document needs a single-page master, or its items would sit
     // on the wrong half of a facing master.
     for (const master of doc.masterSpreads()) {
-      if (!facing) {
-        for (const extra of children(master, 'Page').slice(1)) removeElement(extra);
-        master.setAttribute('PageCount', '1');
-      }
       // The bundled template comes from a localized InDesign, so give new documents the neutral
       // master name people expect.
       if (options.templateBytes === undefined) {
         const prefix = attr(master, 'NamePrefix') ?? 'A';
         setAttrs(master, { BaseName: 'Master', Name: `${prefix}-Master` });
       }
-      const mpages = children(master, 'Page');
-      mpages.forEach((page, i) => {
-        const side = mpages.length === 1 ? (facing ? 'right' : 'single') : i === 0 ? 'left' : 'right';
-        setAttrs(page, {
-          GeometricBounds: `0 0 ${formatNumber(h)} ${formatNumber(w)}`,
-          ItemTransform: formatMatrix(pageTransform(w, h, facing || mpages.length > 1, side)),
-          MasterPageTransform: IDENTITY_TRANSFORM,
-        });
-      });
+      layoutMasterSpread(master, { facing, width: w, height: h });
     }
     // The template's own section may start at another number; a new document starts at page 1.
     const section = children(doc.root, 'Section')[0];

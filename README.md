@@ -101,6 +101,7 @@ bun test                 # unit, integration and schema tests
 bun run lint             # biome
 bun run typecheck        # tsc
 bun run dev              # run the server from source (stdio)
+bun run scripts/call.ts '[{"tool":"preview","arguments":{...}}]'   # tool calls against the source, previews saved as images
 bun run build            # single executable for this platform -> dist/
 bun run build:all        # macOS (arm64, x64), Windows x64, Linux (x64, arm64)
 bun run smoke dist/indesign-mcp   # drive a compiled binary over JSON-RPC

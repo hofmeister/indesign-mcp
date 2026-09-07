@@ -3,7 +3,16 @@
 import type { IdmlDocument } from '../idml/document.ts';
 import { isPageItem, itemSpreadBounds, translateItem } from '../idml/items.ts';
 import { createLayer, findLayer, layerElements } from '../idml/layers.ts';
-import { addPages, findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
+import {
+  addPages,
+  documentPageSize,
+  findPage,
+  isFacingPages,
+  layoutMasterSpread,
+  listPages,
+  type PageInfo,
+  pageForSpreadRect,
+} from '../idml/pages.ts';
 import { pruneUnknownForSchema } from '../idml/schema.ts';
 import { type StyleKind, styleElements, swatchElements } from '../idml/styles.ts';
 import {
@@ -372,9 +381,11 @@ function cloneWithNewIds(
   el: Element,
   intoDoc: import('../idml/xml.ts').Document,
   warnings: string[],
+  /** Shared across the items of one page, so references between them (threading) can be repaired. */
+  shared?: Map<string, string>,
 ): Element {
   const clone = intoDoc.importNode(el, true) as Element;
-  const idMap = new Map<string, string>();
+  const idMap = shared ?? new Map<string, string>();
   const nodes = allElements(clone);
   for (const n of nodes) {
     const self = attr(n, 'Self');
@@ -537,6 +548,16 @@ export function copyMaster(
   clone.setAttribute('BaseName', base);
   clone.setAttribute('Name', `${finalPrefix}-${base}`);
   for (const page of children(clone, 'Page')) page.setAttribute('Name', finalPrefix);
+  // The reference's master may be a facing spread while this document is single-sided (or its
+  // pages a different size); fit it before anything else looks at its coordinates.
+  const fitted = layoutMasterSpread(clone, {
+    facing: isFacingPages(to),
+    ...documentPageSize(to),
+  });
+  if (fitted.orphaned)
+    report.warnings.push(
+      `The reference's master has two pages and this document is single-sided, so ${fitted.orphaned} item(s) from its other page are now on the pasteboard. Delete them, or move them onto the page.`,
+    );
   const layerMap = ensureLayers(from, to, [clone]);
   for (const el of allElements(clone)) {
     const l = attr(el, 'ItemLayer');
@@ -592,17 +613,29 @@ export function copyPage(
   const sourcePages = listPages(from);
   let count = 0;
   const clones: Element[] = [];
+  const idMap = new Map<string, string>();
   for (const item of children(sourceSpread)) {
     if (!isPageItem(item)) continue;
     const b = itemSpreadBounds(item);
     if (!b) continue;
     if (pageForSpreadRect(sourcePages, src.spreadId, b)?.id !== src.id) continue;
-    const clone = cloneWithNewIds(from, to, item, destSpread.ownerDocument!, report.warnings);
+    const clone = cloneWithNewIds(from, to, item, destSpread.ownerDocument!, report.warnings, idMap);
     translateItem(clone, dest.origin.x - src.origin.x, dest.origin.y - src.origin.y);
     insertAfter(destSpread, clone);
     clones.push(clone);
     count++;
   }
+  // A frame cloned before the one it is threaded to could not know its new id yet, and a thread
+  // running on to a page that was not copied has nothing to point at any more.
+  const known = new Set(idMap.values());
+  for (const c of clones)
+    for (const el of allElements(c))
+      for (const name of ['NextTextFrame', 'PreviousTextFrame']) {
+        const value = attr(el, name);
+        if (!value || value === 'n') continue;
+        const mapped = idMap.get(value);
+        el.setAttribute(name, mapped ?? (known.has(value) ? value : 'n'));
+      }
   const layerMap = ensureLayers(from, to, clones);
   for (const c of clones)
     for (const el of allElements(c)) {

@@ -22,6 +22,13 @@ export const pageParam = z
 
 export const itemParam = z.string().describe("The item's name or id (see describe_document / list items).");
 
+export const masterPageParam = z
+  .union([z.number().int().min(1), z.enum(['left', 'right'])])
+  .optional()
+  .describe(
+    'Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both.',
+  );
+
 export const colorParam = z
   .string()
   .describe(
@@ -223,8 +230,16 @@ export function createAll<T, R>(
       results.push(create(doc, spec));
     } catch (err) {
       ctx.forget(doc.path ?? document);
-      const where = specs.length > 1 ? ` (number ${i + 1} of ${specs.length})` : '';
-      throw new Error(`${(err as Error).message}${where}${specs.length > 1 ? '. Nothing was created.' : ''}`);
+      if (specs.length === 1) throw new Error((err as Error).message);
+      const where = ` (number ${i + 1} of ${specs.length})`;
+      // Dropping the document from the cache undoes the half-built set — unless a batch is holding
+      // the writes, where the earlier steps' edits are in the same document and have to be kept.
+      const kept = ctx.savesDeferred
+        ? i === 0
+          ? ' Nothing was created.'
+          : ` The first ${i} were created and are kept.`
+        : ' Nothing was created.';
+      throw new Error(`${(err as Error).message}${where}.${kept}`);
     }
   }
   ctx.save(doc);

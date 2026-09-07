@@ -13,6 +13,7 @@ import {
   itemSpreadBounds,
   listItems,
   moveItemTo,
+  pageBoxOfItem,
   renameItem,
   resizeItem,
   rotateItem,
@@ -42,6 +43,7 @@ import {
 import {
   checkPlacement,
   fitNotes,
+  masterSideNotes,
   pageBoxFor,
   placementWarnings,
   requireLine,
@@ -55,6 +57,7 @@ import {
   documentParam,
   itemParam,
   lengthParam,
+  masterPageParam,
   ok,
   pageParam,
   paragraphInput,
@@ -70,6 +73,7 @@ const targetParams = {
     .describe(
       'Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page.',
     ),
+  masterPage: masterPageParam,
 };
 
 const placement = {
@@ -121,8 +125,12 @@ interface ShapeArgs {
   rotation?: number;
 }
 
-function target(args: { page?: number | string; master?: string }): Target {
-  return args.master ? { master: args.master } : { page: args.page ?? 1 };
+function target(args: {
+  page?: number | string;
+  master?: string;
+  masterPage?: number | 'left' | 'right';
+}): Target {
+  return args.master ? { master: args.master, masterPage: args.masterPage } : { page: args.page ?? 1 };
 }
 
 export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
@@ -152,11 +160,12 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
         const items = listItems(doc, { page, includeMasters }).map((i) => ({
           page: i.page,
           master: i.onMaster,
+          masterPage: i.masterPage,
           ...itemSummary(i, ctx.unit, layers),
         }));
         const lines = items.map(
           (i) =>
-            `${i.master ? `[master ${i.master}] ` : `p${i.page ?? '?'} `}${i.type}${i.name ? ` "${i.name}"` : ''} [${i.id}] ${i.position}, ${i.size}${i.tables ? ` (${i.tables} table${i.tables > 1 ? 's' : ''})` : ''}${i.text !== undefined ? `: "${i.text.slice(0, 60)}"` : ''}${i.image ? ` (${i.image})` : ''}`,
+            `${i.master ? `[master ${i.master}${i.masterPage ? ` page ${i.masterPage}` : ''}] ` : `p${i.page ?? '?'} `}${i.type}${i.name ? ` "${i.name}"` : ''} [${i.id}] ${i.position}, ${i.size}${i.tables ? ` (${i.tables} table${i.tables > 1 ? 's' : ''})` : ''}${i.text !== undefined ? `: "${i.text.slice(0, 60)}"` : ''}${i.image ? ` (${i.image})` : ''}`,
         );
         return ok(lines.join('\n') || 'No items', { items });
       }),
@@ -192,7 +201,10 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
-        const notes = checkPlacement(ctx, doc, ctx.rect(args), args, 'text frame');
+        const notes = [
+          ...checkPlacement(ctx, doc, ctx.rect(args), args, 'text frame'),
+          ...masterSideNotes(doc, args, 'frame', ctx.rect(args)),
+        ];
         const el = createTextFrame(doc, target(args), {
           rect: ctx.rect(args),
           text: args.text,
@@ -323,7 +335,7 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
 
     const rect = needBox();
     const kind = args.shape === 'polygon' && args.starInset ? 'star' : args.shape;
-    const notes = checkPlacement(ctx, doc, rect, args, kind);
+    const notes = [...checkPlacement(ctx, doc, rect, args, kind), ...masterSideNotes(doc, args, kind, rect)];
     let el: Element;
     if (args.shape === 'rectangle') {
       el = createRectangle(doc, where, { rect, ...common, fill: args.fill });
@@ -444,8 +456,9 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
         } else if (args.dx !== undefined || args.dy !== undefined) {
           translateItem(found.element, ctx.ptOpt(args.dx) ?? 0, ctx.ptOpt(args.dy) ?? 0);
         } else if (args.x !== undefined || args.y !== undefined) {
-          const page = found.info.page !== undefined ? findPage(doc, found.info.page) : undefined;
-          const origin = page?.origin ?? { x: 0, y: 0 };
+          // x/y are relative to the item's own page — the master page it sits on for master items,
+          // which is not the origin of the master spread when the master has more than one page.
+          const origin = found.info.origin ?? { x: 0, y: 0 };
           const b = found.info.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
           moveItemTo(found.element, {
             x: origin.x + (args.x !== undefined ? ctx.pt(args.x) : b.x),
@@ -735,18 +748,18 @@ export function registerItemTools(reg: ToolRegistry, ctx: ToolContext): void {
       run(() => {
         const doc = ctx.open(args.document);
         const founds = args.items.map((i) => findItem(doc, i, args.page));
-        const pageIndex = founds[0]!.info.page;
-        if (pageIndex === undefined) throw new Error('Items must be on a document page');
-        const page = findPage(doc, pageIndex);
+        // Items on a master align to the master page they sit on, like items on a document page.
+        const box = pageBoxOfItem(doc, founds[0]!.info);
+        if (!box) throw new Error('Items must be on a page or a master page');
         const area =
           args.to === 'margins'
             ? {
-                x: page.origin.x + page.margins.left,
-                y: page.origin.y + page.margins.top,
-                width: page.width - page.margins.left - page.margins.right,
-                height: page.height - page.margins.top - page.margins.bottom,
+                x: box.x + box.margins.left,
+                y: box.y + box.margins.top,
+                width: box.width - box.margins.left - box.margins.right,
+                height: box.height - box.margins.top - box.margins.bottom,
               }
-            : { x: page.origin.x, y: page.origin.y, width: page.width, height: page.height };
+            : { x: box.x, y: box.y, width: box.width, height: box.height };
         for (const f of founds) {
           const b = itemSpreadBounds(f.element);
           if (!b) continue;

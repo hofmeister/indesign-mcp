@@ -2,8 +2,10 @@
 // that land off the page come back with a warning instead of silently disappearing.
 import type { IdmlDocument } from '../idml/document.ts';
 import type { Rect } from '../idml/geometry.ts';
+import { masterPageIndex } from '../idml/items.ts';
 import { documentPageSize, findPage } from '../idml/pages.ts';
 import { formatLength } from '../idml/units.ts';
+import { attr, children } from '../idml/xml.ts';
 import type { ToolContext } from './context.ts';
 
 /** InDesign's largest page or object dimension: 5486 mm. */
@@ -36,6 +38,54 @@ export function pageBoxFor(doc: IdmlDocument, target: PlacementTarget): PageBox 
   } catch {
     return undefined; // the tool itself reports an unknown page
   }
+}
+
+/**
+ * A note for an item put on one page of a multi-page master.
+ *
+ * A facing-pages master has a left and a right page (a gatefold has more), and an item goes on
+ * one of them: InDesign only shows it on the document pages of that side. A running head placed
+ * once is then missing from every second page, which is easy to miss until the whole thing prints.
+ */
+export function masterSideNotes(
+  doc: IdmlDocument,
+  target: { master?: string; masterPage?: number | 'left' | 'right' },
+  what: string,
+  rect?: Rect,
+): string[] {
+  if (!target.master) return [];
+  const spread = doc.masterSpreads().find((m) => {
+    const name = attr(m, 'Name') ?? `${attr(m, 'NamePrefix') ?? ''}-${attr(m, 'BaseName') ?? ''}`;
+    return name.toLowerCase() === target.master!.toLowerCase() || attr(m, 'Self') === target.master;
+  });
+  if (!spread) return [];
+  const count = children(spread, 'Page').length;
+  if (count < 2) return [];
+  const index = masterPageIndex(target.masterPage, count);
+  const notes: string[] = [];
+  // An item reaching over the spine belongs to the spread as far as InDesign is concerned: it is
+  // painted across the neighbouring page too, even where that page uses a different master.
+  if (rect) {
+    const size = documentPageSize(doc);
+    const overSpine = index === 0 ? rect.x + rect.width > size.width + 0.5 : rect.x < -0.5;
+    if (overSpine)
+      notes.push(
+        `the ${what} reaches over the spine of ${target.master}, and InDesign paints such an item across the whole spread — including a facing page that uses another master. Keep it inside its own page (bleed on the outer edge only) unless that is what you want.`,
+      );
+  }
+  if (count === 2) {
+    const side = index === 0 ? 'left' : 'right';
+    const other = index === 0 ? 'right' : 'left';
+    notes.push(
+      `${target.master} has two pages and the ${what} went on the ${side} one, so it will only show on ${side}-hand pages. Add another with masterPage: "${other}" if it should repeat on every page.`,
+    );
+    return notes;
+  }
+  const others = Array.from({ length: count }, (_, i) => i + 1).filter((n) => n !== index + 1);
+  notes.push(
+    `${target.master} has ${count} pages and the ${what} went on page ${index + 1} of it, so it will only show on the document pages using that page. Add another with masterPage: ${others.join(' or ')} if it should repeat.`,
+  );
+  return notes;
 }
 
 /**

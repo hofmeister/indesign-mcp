@@ -207,13 +207,19 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
   // --- text --------------------------------------------------------------------------------
   checked.push('Overset text');
   for (const o of findOversetFrames(doc)) {
+    // A table runs past the bottom of its frame instead of going overset, and it cannot be
+    // threaded on, so it deserves its own wording.
     add({
-      check: 'overset-text',
+      check: o.table ? 'overset-table' : 'overset-text',
       severity: 'error',
-      message: `Text does not fit in "${o.name ?? o.frame}"${o.text ? `: “${o.text}…”` : ''}`,
+      message: o.table
+        ? `The table in "${o.name ?? o.frame}" is taller than its frame, so its last rows are cut off`
+        : `Text does not fit in "${o.name ?? o.frame}"${o.text ? `: “${o.text}…”` : ''}`,
       page: o.page,
       item: o.name ?? o.frame,
-      fix: 'Make the frame bigger, shorten the text, or thread it into another frame.',
+      fix: o.table
+        ? 'Make the frame taller with edit_item (op "resize"), or give the table fewer rows, smaller insets or a smaller text size.'
+        : 'Make the frame bigger, shorten the text, or thread it into another frame.',
     });
   }
 
@@ -376,7 +382,7 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
         severity: 'warning',
         message: `"${first.name ?? first.id}" is repeated in the same place on ${onPages.length} pages (${onPages.join(', ')})`,
         item: first.name ?? first.id,
-        fix: 'Running heads, footers, folios and rules belong on a master page: create_master (or use the existing one), place the item there with target master, apply_master to the pages, and delete the per-page copies — pages you add later then inherit it automatically.',
+        fix: 'Running heads, footers, folios and rules belong on a master page: edit_masters op "create" (or use the existing one), place the item there with master (and masterPage for a facing master), apply_master to the pages, and delete the per-page copies — pages you add later then inherit it automatically.',
       });
     }
   }

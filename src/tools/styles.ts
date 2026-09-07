@@ -79,6 +79,36 @@ const paragraphFields = {
   dropCapCharacters: z.number().int().min(0).max(150).optional(),
 };
 
+/**
+ * Orders a set of styles so a parent is created before the styles based on it, and returns the
+ * `nextStyle` links to apply afterwards. A style may point `nextStyle` at itself or at one defined
+ * later in the same call — both are ordinary in a style sheet, and neither exists yet while the
+ * styles are being created.
+ */
+function orderStyleSpecs<T extends { name: string; basedOn?: string; nextStyle?: string }>(
+  specs: T[],
+): { ordered: Omit<T, 'nextStyle'>[]; links: { name: string; nextStyle: string }[] } {
+  const byName = new Map(specs.map((s) => [s.name.toLowerCase(), s]));
+  const ordered: T[] = [];
+  const done = new Set<string>();
+  const visit = (spec: T, seen: Set<string>) => {
+    const key = spec.name.toLowerCase();
+    if (done.has(key) || seen.has(key)) return;
+    seen.add(key);
+    const parent = spec.basedOn ? byName.get(spec.basedOn.toLowerCase()) : undefined;
+    if (parent && parent !== spec) visit(parent, seen);
+    done.add(key);
+    ordered.push(spec);
+  };
+  for (const spec of specs) visit(spec, new Set());
+  const links: { name: string; nextStyle: string }[] = [];
+  const stripped = ordered.map(({ nextStyle, ...rest }) => {
+    if (nextStyle) links.push({ name: rest.name, nextStyle });
+    return rest as Omit<T, 'nextStyle'>;
+  });
+  return { ordered: stripped, links };
+}
+
 export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
   reg.listing(
     'styles',
@@ -155,9 +185,20 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
           oneOrMany(single, styles, { one: 'paragraph style', list: 'styles' }),
           'paragraph style',
         );
-        const { results } = createAll(ctx, document, specs, (doc, spec) =>
-          createParagraphStyle(doc, spec as Parameters<typeof createParagraphStyle>[1]),
+        const { ordered, links } = orderStyleSpecs(
+          specs as { name: string; basedOn?: string; nextStyle?: string }[],
         );
+        const { doc, results } = createAll(ctx, document, ordered, (d, spec) =>
+          createParagraphStyle(d, spec as Parameters<typeof createParagraphStyle>[1]),
+        );
+        // The nextStyle links go on once every style in the call exists.
+        if (links.length) {
+          for (const link of links)
+            applyStyleSpec(doc, resolveStyle(doc, 'ParagraphStyle', link.name), {
+              nextStyle: link.nextStyle,
+            } as never);
+          ctx.save(doc);
+        }
         return ok(
           createdSummary(
             'paragraph style',
@@ -198,7 +239,8 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
           oneOrMany(single, styles, { one: 'character style', list: 'styles' }),
           'character style',
         );
-        const { results } = createAll(ctx, document, specs, (doc, spec) =>
+        const { ordered } = orderStyleSpecs(specs as { name: string; basedOn?: string }[]);
+        const { results } = createAll(ctx, document, ordered, (doc, spec) =>
           createCharacterStyle(doc, spec as Parameters<typeof createCharacterStyle>[1]),
         );
         return ok(

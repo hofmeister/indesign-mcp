@@ -82,6 +82,11 @@ export class ToolContext {
     return path;
   }
 
+  /** True while a batch is holding writes back. */
+  get savesDeferred(): boolean {
+    return this.deferred !== undefined;
+  }
+
   /** Holds writes until `flushSaves`, so a run of edits costs one write instead of one each. */
   deferSaves(): void {
     this.deferred ??= new Map();

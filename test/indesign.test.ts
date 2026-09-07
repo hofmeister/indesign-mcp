@@ -102,6 +102,43 @@ describeInDesign('InDesign sees the same document we do', () => {
     expect(r.report?.pages.map((p) => p.items)).toEqual([1, 0, 0]);
   }, 300_000);
 
+  test('page 1 of a facing-pages document is a right-hand page to InDesign too', async () => {
+    const client = await connectedClient();
+    const dir = outDir();
+    const document = join(dir, 'facing.idml');
+    await call(client, 'new_document', {
+      path: document,
+      pageSize: 'A5',
+      pages: 2,
+      facingPages: true,
+    });
+    // One frame per master page, at the same place on each, so the render says which side was used.
+    for (const side of ['left', 'right'] as const) {
+      await call(client, 'add_text_frame', {
+        document,
+        master: 'A-Master',
+        masterPage: side,
+        name: `Head ${side}`,
+        x: side === 'left' ? 10 : 60,
+        y: 10,
+        width: 40,
+        height: 8,
+        text: side,
+      });
+    }
+    // InDesign works the sides out from each spread's BindingLocation, not from the page
+    // coordinates: written the wrong way round, page 1 inherits the master's left page instead.
+    const opened = IdmlDocument.load(document);
+    const bindings = opened
+      .spreads()
+      .map((s) => s.getAttribute('BindingLocation'))
+      .map(Number);
+    expect(bindings).toEqual([0, 1]);
+
+    const r = await renderWithInDesign(document, [1], { dpi: 36 });
+    expect(r.report?.pages[0]?.masterItems).toBeGreaterThan(0);
+  }, 300_000);
+
   test('a PNG export reports every file InDesign wrote, and nothing else', async () => {
     const client = await connectedClient();
     const dir = outDir();

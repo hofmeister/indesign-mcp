@@ -275,8 +275,18 @@ export function registerTextTools(reg: ToolRegistry, ctx: ToolContext): void {
           : doc
               .storyParts()
               .flatMap((p) => Array.from(doc.xml(p).getElementsByTagName('Story')) as Element[]);
+        const fontStyle =
+          args.fontStyle ??
+          (args.bold || args.italic
+            ? args.bold && args.italic
+              ? 'Bold Italic'
+              : args.bold
+                ? 'Bold'
+                : 'Italic'
+            : undefined);
         const { attrs, props } = textStyleAttrs(doc, {
           font: args.font,
+          fontStyle,
           size: args.size,
           color: args.color,
           tracking: args.tracking,

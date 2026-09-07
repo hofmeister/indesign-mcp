@@ -35,6 +35,16 @@ export function registerMergedTools(reg: ToolRegistry): void {
   });
 
   registerFamilyTool(reg, {
+    name: 'edit_masters',
+    family: 'edit_masters',
+    title: 'Work with master pages',
+    discriminator: 'op',
+    keyName: 'operation',
+    description: (keys) =>
+      `Creates and changes master pages (parent pages): ${keys.join(', ')}. Put repeating furniture — running head, folio, background, grid — on a master and apply it to pages with apply_master, rather than copying it onto every page. Items go on a master with add_text_frame / add_shape using master and masterPage.`,
+  });
+
+  registerFamilyTool(reg, {
     name: 'edit_layers',
     family: 'edit_layers',
     title: 'Work with layers',

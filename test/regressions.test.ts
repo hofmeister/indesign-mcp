@@ -4,10 +4,20 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
-import { createParagraphStyle, resolveStyle } from '../src/idml/styles.ts';
+import { createTextFrame, findItem } from '../src/idml/items.ts';
+import { isFacingPages, layoutMasterSpread } from '../src/idml/pages.ts';
+import {
+  applyObjectStyle,
+  createCharacterStyle,
+  createObjectStyle,
+  createParagraphStyle,
+  listFonts,
+  resolveStyle,
+} from '../src/idml/styles.ts';
 import { createDocument } from '../src/idml/template.ts';
 import { applyListSettings } from '../src/idml/typography.ts';
-import { attr, getProperty } from '../src/idml/xml.ts';
+import { validateDocument } from '../src/idml/validate.ts';
+import { attr, children, type Element, firstChild, getProperty } from '../src/idml/xml.ts';
 import { fontCatalog } from '../src/preview/fonts.ts';
 import { createServer } from '../src/server.ts';
 
@@ -922,5 +932,502 @@ describe('second round of real-document testing', () => {
 
     const items = await call(client, 'list', { what: 'items', document, page: 1 });
     expect(items.content[0]?.text ?? '').toContain('<Running Head>');
+  });
+});
+
+describe('third round: styles and references', () => {
+  test('basedOn is written the way InDesign resolves it', () => {
+    const doc = createDocument({ pageSize: 'A4', pages: 1 });
+    createParagraphStyle(doc, { name: 'Parent', font: 'Helvetica Neue', size: 11 });
+    createParagraphStyle(doc, { name: 'Child', basedOn: 'Parent' });
+    createCharacterStyle(doc, { name: 'CharParent', fontStyle: 'Bold' });
+    createCharacterStyle(doc, { name: 'CharChild', basedOn: 'CharParent' });
+
+    // InDesign writes a custom parent as an object reference; the bare name it cannot resolve, and
+    // the child then silently inherits nothing.
+    const child = resolveStyle(doc, 'ParagraphStyle', 'Child');
+    expect(getProperty(child, 'BasedOn')).toEqual({ type: 'object', value: 'ParagraphStyle/Parent' });
+    const charChild = resolveStyle(doc, 'CharacterStyle', 'CharChild');
+    expect(getProperty(charChild, 'BasedOn')).toEqual({
+      type: 'object',
+      value: 'CharacterStyle/CharParent',
+    });
+    // A built-in parent keeps the $ID form.
+    const parent = resolveStyle(doc, 'ParagraphStyle', 'Parent');
+    expect(getProperty(parent, 'BasedOn')?.type).toBe('string');
+  });
+
+  test('a set of styles may point basedOn and nextStyle at each other, or at itself', async () => {
+    const client = await connectedClient();
+    const document = docPath('styleset');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const r = await call(client, 'create_paragraph_style', {
+      document,
+      styles: [
+        // Body comes after the style based on it, and points nextStyle at itself.
+        { name: 'Intro', basedOn: 'Body', nextStyle: 'Body' },
+        { name: 'Body', size: 10, nextStyle: 'Body' },
+      ],
+    });
+    expect(r.isError).toBeFalsy();
+    expect(r.content[0]?.text ?? '').toContain('Body');
+  });
+
+  test('a facing-pages reference keeps its setup, and a single-sided one moves master items', () => {
+    const reference = createDocument({ pageSize: 'A5', pages: 2, facingPages: true });
+    const master = reference.masterSpreads()[0]!;
+    // A running head on the first (left) master page sits at negative spread coordinates.
+    createTextFrame(
+      reference,
+      { master: 'A-Master' },
+      { rect: { x: 10, y: 10, width: 60, height: 6 }, name: 'Running Head', text: 'Head' },
+    );
+    expect(children(master, 'Page').length).toBe(2);
+    const bytes = reference.toBytes();
+
+    // Started from the reference: the facing-pages setup comes along.
+    const facing = createDocument({ templateBytes: bytes, pages: 2 });
+    expect(isFacingPages(facing)).toBe(true);
+
+    // Forced single-sided: the master loses a page, and its items move with the page they are on.
+    const single = createDocument({ templateBytes: bytes, pages: 2, facingPages: false });
+    const singleMaster = single.masterSpreads()[0]!;
+    expect(children(singleMaster, 'Page').length).toBe(1);
+    const item = findItem(single, 'Running Head');
+    expect(item.info.bounds?.x).toBeCloseTo(10, 1);
+    expect(item.info.bounds?.y).toBeCloseTo(10, 1);
+  });
+
+  test('only the items of the page that went away are counted as orphaned', () => {
+    const doc = createDocument({ pageSize: 'A5', pages: 2, facingPages: true });
+    for (const side of ['left', 'right'] as const)
+      createTextFrame(
+        doc,
+        { master: 'A-Master', masterPage: side },
+        { rect: { x: 10, y: 10, width: 60, height: 6 }, name: `Head ${side}`, text: side },
+      );
+    const master = doc.masterSpreads()[0]!;
+    // An item's position is in its path, not its transform: counting transforms called every item
+    // an orphan. One page goes, so one of the two frames is left beside the paper.
+    const { orphaned } = layoutMasterSpread(master, { facing: false, width: 419.5, height: 595.3 });
+    expect(orphaned).toBe(1);
+  });
+});
+
+describe('third round: the smaller edges', () => {
+  test('a document declares the fonts its styles use', () => {
+    const doc = createDocument({ pageSize: 'A4', pages: 1 });
+    createParagraphStyle(doc, { name: 'Body', font: 'Helvetica Neue', size: 10 });
+    createParagraphStyle(doc, { name: 'Head', font: 'Helvetica Neue', fontStyle: 'Bold', size: 20 });
+    // Everything that reads the file rather than laying it out works from Fonts.xml.
+    const family = listFonts(doc).find((f) => f.family === 'Helvetica Neue');
+    expect(family?.styles).toEqual(expect.arrayContaining(['Regular', 'Bold']));
+    expect(validateDocument(doc).filter((i) => i.level === 'error')).toEqual([]);
+  });
+
+  test('an item on a two-page master says it only shows on one side', async () => {
+    const client = await connectedClient();
+    const document = docPath('facing');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2, facingPages: true });
+    const r = await call(client, 'add_text_frame', {
+      document,
+      master: 'A-Master',
+      name: 'Running Head',
+      x: 18,
+      y: 10,
+      width: 80,
+      height: 6,
+      text: 'Head',
+    });
+    expect(r.content[0]?.text ?? '').toContain('went on the left one');
+
+    // A single-page master says nothing of the sort.
+    const single = docPath('single');
+    await call(client, 'new_document', { path: single, pageSize: 'A4', pages: 2 });
+    const q = await call(client, 'add_text_frame', {
+      document: single,
+      master: 'A-Master',
+      name: 'Running Head',
+      x: 18,
+      y: 10,
+      width: 80,
+      height: 6,
+      text: 'Head',
+    });
+    expect(q.content[0]?.text ?? '').not.toContain('went on the left one');
+  });
+
+  test('listing styles does not dump every InDesign default', async () => {
+    const client = await connectedClient();
+    const document = docPath('stylelist');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', { document, name: 'Body', size: 10 });
+    const r = (await call(client, 'list', { what: 'styles', document, kind: 'paragraph' })) as {
+      structuredContent?: unknown;
+    };
+    const json = JSON.stringify(r.structuredContent ?? {});
+    expect(json).toContain('Body');
+    expect(json).not.toContain('RubyParentSpacing');
+  });
+});
+
+describe('object styles based on other object styles', () => {
+  test('the parent is referenced, and applying the child brings the parent along', () => {
+    const doc = createDocument({ pageSize: 'A4', pages: 1 });
+    createParagraphStyle(doc, { name: 'Panel Body', font: 'Helvetica Neue', size: 10 });
+    createObjectStyle(doc, {
+      name: 'Panel',
+      fill: 'cmyk(35,5,45,0) as Moss',
+      inset: 8,
+      paragraphStyle: 'Panel Body',
+    });
+    createObjectStyle(doc, { name: 'Note', basedOn: 'Panel', fill: 'cmyk(25,0,95,0) as Citrus' });
+
+    const note = resolveStyle(doc, 'ObjectStyle', 'Note');
+    expect(getProperty(note, 'BasedOn')).toEqual({ type: 'object', value: 'ObjectStyle/Panel' });
+
+    const frame = createTextFrame(
+      doc,
+      { page: 1 },
+      { rect: { x: 20, y: 20, width: 80, height: 40 }, name: 'Note Frame', text: 'Hello' },
+    );
+    applyObjectStyle(doc, frame, 'Note');
+    // Its own fill wins; the inset and paragraph style come from the style it is based on.
+    expect(attr(frame, 'FillColor')).toBe('Color/Citrus');
+    const inset = firstChild(firstChild(frame, 'TextFramePreference'), 'Properties');
+    expect(inset?.textContent).toContain('8');
+    const story = doc.story(attr(frame, 'ParentStory') ?? '')!;
+    const psr = story.getElementsByTagName('ParagraphStyleRange')[0] as unknown as Element;
+    expect(attr(psr, 'AppliedParagraphStyle')).toBe('ParagraphStyle/Panel Body');
+  });
+});
+
+describe('master pages have sides', () => {
+  test('an item can be put on either page of a facing master, and is measured against it', async () => {
+    const client = await connectedClient();
+    const document = docPath('mastersides');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2, facingPages: true });
+    for (const side of ['left', 'right'] as const) {
+      const r = await call(client, 'add_text_frame', {
+        document,
+        master: 'A-Master',
+        masterPage: side,
+        name: `Head ${side}`,
+        x: 18,
+        y: 10,
+        width: 80,
+        height: 6,
+        text: 'Head',
+      });
+      // Measured against the page it went on: neither is "off the page" or "on the pasteboard".
+      expect(r.content[0]?.text ?? '').not.toContain('pasteboard');
+      expect(r.content[0]?.text ?? '').toContain(`went on the ${side} one`);
+    }
+
+    const items = await call(client, 'list', { what: 'items', document, includeMasters: true });
+    const text = items.content[0]?.text ?? '';
+    // Both report the same page-relative position, on their own side.
+    expect(text).toContain('Head left');
+    expect(text).toContain('Head right');
+    expect((text.match(/18mm, 10mm/g) ?? []).length).toBe(2);
+  });
+
+  test('a master page that does not exist is refused', async () => {
+    const client = await connectedClient();
+    const document = docPath('masterpage3');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2, facingPages: true });
+    const r = await call(client, 'add_shape', {
+      document,
+      master: 'A-Master',
+      masterPage: 3,
+      shape: 'rectangle',
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 20,
+    });
+    expect(r.content[0]?.text ?? '').toContain('no page 3');
+  });
+});
+
+describe('master pages, in full', () => {
+  test('create, rename, re-page, base on another, delete', async () => {
+    const client = await connectedClient();
+    const document = docPath('masters');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 4, facingPages: true });
+
+    // A gatefold master: three pages in one spread.
+    const made = await call(client, 'edit_masters', {
+      op: 'create',
+      document,
+      prefix: 'G',
+      name: 'Gatefold',
+      pages: 3,
+      keepItems: false,
+    });
+    expect(made.content[0]?.text ?? '').toContain('3 page(s)');
+
+    // Its third page can be addressed like any other.
+    const onThird = await call(client, 'add_shape', {
+      document,
+      master: 'G-Gatefold',
+      masterPage: 3,
+      shape: 'rectangle',
+      name: 'Flap',
+      x: 10,
+      y: 10,
+      width: 40,
+      height: 20,
+      fill: 'Black',
+    });
+    expect(onThird.content[0]?.text ?? '').not.toContain('pasteboard');
+    const items = await call(client, 'list', { what: 'items', document, includeMasters: true });
+    expect(items.content[0]?.text ?? '').toContain('[master G-Gatefold page 3]');
+
+    await call(client, 'edit_masters', { op: 'rename', document, master: 'G-Gatefold', name: 'Foldout' });
+    const renamed = await call(client, 'list', { what: 'masters', document });
+    expect(renamed.content[0]?.text ?? '').toContain('G-Foldout');
+
+    await call(client, 'edit_masters', { op: 'pages', document, master: 'G-Foldout', count: 2 });
+    const repaged = await call(client, 'list', { what: 'masters', document });
+    expect(repaged.content[0]?.text ?? '').toMatch(/G-Foldout[^\n]*2 page/);
+
+    // Based on another master, the way InDesign's "Based on Master" works.
+    const parented = await call(client, 'edit_masters', {
+      op: 'parent',
+      document,
+      master: 'G-Foldout',
+      parent: 'A-Master',
+    });
+    expect(parented.isError).toBeFalsy();
+    const loop = await call(client, 'edit_masters', {
+      op: 'parent',
+      document,
+      master: 'A-Master',
+      parent: 'G-Foldout',
+    });
+    expect(loop.content[0]?.text ?? '').toContain('on each other');
+
+    // Deleting sends the pages that used it to another master.
+    await call(client, 'apply_master', { document, master: 'G-Foldout', pages: [2] });
+    const deleted = await call(client, 'edit_masters', {
+      op: 'delete',
+      document,
+      master: 'G-Foldout',
+      replaceWith: 'A-Master',
+    });
+    expect(deleted.content[0]?.text ?? '').toContain('1 page(s)');
+    const pages = await call(client, 'list', { what: 'pages', document });
+    expect(pages.content[0]?.text ?? '').not.toContain('G-Foldout');
+
+    const validated = await call(client, 'validate_document', { document });
+    expect(validated.content[0]?.text ?? '').toContain('No problems found');
+  });
+
+  test('the last master cannot be deleted', async () => {
+    const client = await connectedClient();
+    const document = docPath('lastmaster');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const r = await call(client, 'edit_masters', { op: 'delete', document, master: 'A-Master' });
+    expect(r.content[0]?.text ?? '').toContain('at least one master');
+  });
+});
+
+describe('several masters in one document', () => {
+  test('each master can be built, applied and listed with the pages that use it', async () => {
+    const client = await connectedClient();
+    const document = docPath('manymasters');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 6 });
+
+    // Three masters, each with its own furniture.
+    for (const [prefix, name, y] of [
+      ['B', 'Chapter', 20],
+      ['C', 'Gallery', 30],
+      ['D', 'Back', 40],
+    ] as const) {
+      await call(client, 'edit_masters', {
+        op: 'create',
+        document,
+        prefix,
+        name,
+        keepItems: false,
+      });
+      await call(client, 'add_text_frame', {
+        document,
+        master: `${prefix}-${name}`,
+        name: `${prefix} Head`,
+        x: 18,
+        y,
+        width: 80,
+        height: 6,
+        text: `${name} running head`,
+      });
+    }
+    await call(client, 'apply_master', { document, master: 'B-Chapter', pages: [2, 3] });
+    await call(client, 'apply_master', { document, master: 'C-Gallery', pages: [4] });
+    await call(client, 'apply_master', { document, master: 'D-Back', pages: [5, 6] });
+
+    const masters = await call(client, 'list', { what: 'masters', document });
+    const text = masters.content[0]?.text ?? '';
+    expect(text).toContain('B-Chapter');
+    expect(text).toContain('pages 2, 3');
+    expect(text).toContain('C-Gallery');
+    expect(text).toContain('pages 4');
+    expect(text).toContain('D-Back');
+    expect(text).toContain('pages 5, 6');
+
+    // New pages can be given any of them, not just the first master.
+    await call(client, 'edit_pages', { op: 'add', document, count: 1, master: 'C-Gallery' });
+    const pages = await call(client, 'list', { what: 'pages', document });
+    expect((pages.content[0]?.text ?? '').split('\n').at(-1)).toContain('C-Gallery');
+
+    const validated = await call(client, 'validate_document', { document });
+    expect(validated.content[0]?.text ?? '').toContain('No problems found');
+  });
+});
+
+describe('editing items on a master page', () => {
+  test('move and align use the master page the item is on, not the spread', async () => {
+    const client = await connectedClient();
+    const document = docPath('mastermove');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2, facingPages: true });
+    await call(client, 'add_text_frame', {
+      document,
+      master: 'A-Master',
+      masterPage: 'right',
+      name: 'Head',
+      x: 18,
+      y: 12,
+      width: 80,
+      height: 6,
+      text: 'Head',
+    });
+
+    const moved = await call(client, 'edit_item', { op: 'move', document, item: 'Head', x: 60, y: 20 });
+    // Page-relative, as given — before this it landed at y = 20 + half the page height.
+    expect(moved.content[0]?.text ?? '').toContain('60mm, 20mm');
+    expect(moved.content[0]?.text ?? '').not.toContain('pasteboard');
+
+    const aligned = await call(client, 'edit_item', {
+      op: 'align',
+      document,
+      items: ['Head'],
+      horizontal: 'right',
+      to: 'page',
+    });
+    expect(aligned.isError).toBeFalsy();
+    const items = await call(client, 'list', { what: 'items', document, includeMasters: true });
+    // Flush with the right edge of its own master page: 210mm - 80mm.
+    expect(items.content[0]?.text ?? '').toContain('130mm, 20mm');
+  });
+});
+
+describe('copying from a reference', () => {
+  test('threaded frames copied together stay threaded, and dangling threads are cut', async () => {
+    const client = await connectedClient();
+    const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-ref-'));
+    const reference = join(dir, 'threaded.idml');
+    await call(client, 'new_document', { path: reference, pageSize: 'A4', pages: 1 });
+    await call(client, 'add_text_frame', {
+      document: reference,
+      page: 1,
+      name: 'Col A',
+      x: 18,
+      y: 40,
+      width: 80,
+      height: 100,
+      text: 'Some text that runs on into the second column of this page.',
+    });
+    await call(client, 'add_text_frame', {
+      document: reference,
+      page: 1,
+      name: 'Col B',
+      x: 110,
+      y: 40,
+      width: 80,
+      height: 100,
+    });
+    await call(client, 'thread_text_frames', { document: reference, from: 'Col A', to: 'Col B' });
+    await call(client, 'add_reference_folder', { folder: dir });
+
+    const document = docPath('copied');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 1 });
+    await call(client, 'copy_page_from_reference', { document, reference: 'threaded', page: 1 });
+
+    // The copies used to keep the source's frame ids, which do not exist here.
+    const validated = await call(client, 'validate_document', { document });
+    expect(validated.content[0]?.text ?? '').toContain('No problems found');
+  });
+});
+
+describe('tables that outgrow their frame', () => {
+  test('styling that makes a table taller says so, and preflight sees it', async () => {
+    const client = await connectedClient();
+    const document = docPath('tablefit');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'add_table', {
+      document,
+      page: 1,
+      name: 'Diary',
+      x: 18,
+      y: 40,
+      width: 174,
+      headerRows: 1,
+      data: [
+        ['Date', 'Event'],
+        ['3 October', 'Autumn walk'],
+        ['17 October', "Members' evening"],
+        ['7 November', 'Winter lecture'],
+      ],
+    });
+    // add_table fits the frame to the table; a bigger inset makes every row taller.
+    const styled = await call(client, 'style_table', {
+      document,
+      frame: 'Diary',
+      inset: 8,
+      verticalAlignment: 'center',
+    });
+    expect(styled.content[0]?.text ?? '').toContain('cut off');
+
+    // A table is not overset text, so this used to pass preflight silently — and when it is
+    // reported, it should say a table is cut off rather than that text does not fit.
+    const report = await call(client, 'preflight_document', { document });
+    const text = report.content[0]?.text ?? '';
+    expect(text).toContain('The table in "Diary" is taller than its frame');
+    expect(text).not.toContain('Text does not fit in "Diary"');
+  });
+});
+
+describe('the order elements go into a document', () => {
+  test('a gradient and a hyperlink land where the IDML schema expects them', async () => {
+    const client = await connectedClient();
+    const document = docPath('order');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_gradient', {
+      document,
+      name: 'Fade',
+      stops: [{ color: 'Black' }, { color: 'Paper' }],
+    });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Colophon',
+      x: 18,
+      y: 40,
+      width: 120,
+      height: 20,
+      text: 'Visit example.com for more.',
+    });
+    await call(client, 'add_hyperlink', {
+      document,
+      item: 'Colophon',
+      text: 'example.com',
+      url: 'https://example.com',
+    });
+
+    // Both parts have a fixed element order; appending at the end put later elements out of place.
+    const validated = await call(client, 'validate_document', { document });
+    const text = validated.content[0]?.text ?? '';
+    expect(text).not.toContain('is not allowed here');
   });
 });

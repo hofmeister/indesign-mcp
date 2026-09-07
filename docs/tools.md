@@ -137,18 +137,6 @@ Applies a master page (or "none") to the given pages, so they inherit its runnin
 | `master` * | string |  |
 | `pages` * | array |  |
 
-### `create_master`
-
-Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Use a master for everything that repeats across pages — running heads, footers, folios, background rules, the text-frame grid — then apply_master to the pages that should use it. Add items to it with add_text_frame / add_shape using target master rather than page.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
-| `prefix` * | string | One-letter prefix, e.g. "B". |
-| `name` * | string | Name, e.g. "Chapter". |
-| `basedOn` | string | Existing master to duplicate (default: the first one). Its items are copied. |
-| `keepItems` | boolean | Copy the items of the source master (default true). |
-
 ### `add_guides`
 
 Adds ruler guides to a page: explicit horizontal/vertical positions (from the page top-left), or guides along the margins and column edges.
@@ -217,6 +205,7 @@ Adds a text frame with text to a page. Positions are measured from the top-left 
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
 | `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page. |
+| `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
 | `x` * | number,string | Distance from the left edge of the page. |
 | `y` * | number,string | Distance from the top edge of the page. |
 | `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -246,6 +235,7 @@ Adds a rectangle, ellipse, line, polygon/star or free path. Rectangles, ellipses
 | `shape` * | `rectangle` \| `ellipse` \| `line` \| `polygon` \| `path` | Which shape to draw. |
 | `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
 | `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page. |
+| `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
 | `x` | number,string | Box left edge. Rectangle, ellipse and polygon. |
 | `y` | number,string | Box top edge. Rectangle, ellipse and polygon. |
 | `width` | number,string | Box width. Rectangle, ellipse and polygon. |
@@ -695,6 +685,7 @@ Places an existing image file (PNG, JPEG, TIFF, PSD, PDF…) on a page: either i
 | `image` * | string | Path to the image file. |
 | `page` | integer \| string | Page for a new frame (default 1). |
 | `master` | string | Place on this master page instead. |
+| `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
 | `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -731,6 +722,7 @@ Generates a picture with OpenAI from a text prompt, saves it in the document's L
 | `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
 | `page` | integer \| string | Page for a new frame (default 1). |
 | `master` | string | Place on this master page instead. |
+| `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
 | `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -758,6 +750,7 @@ Edits or combines existing pictures with OpenAI: describe the change in the prom
 | `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
 | `page` | integer \| string | Page for a new frame (default 1). |
 | `master` | string | Place on this master page instead. |
+| `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
 | `x` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `y` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `width` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -1229,6 +1222,25 @@ Exports the document for sending or printing. With Adobe InDesign installed the 
 | `bleed` | boolean | Include the bleed area. |
 | `marks` | boolean | Printer's marks on a PDF: crop and bleed marks, registration, colour bars and page info. Needs Adobe InDesign; the built-in renderer cannot draw them. |
 | `renderer` | `auto` \| `builtin` \| `indesign` |  |
+
+### `edit_masters`
+
+Creates and changes master pages (parent pages): create, delete, rename, pages, parent. Put repeating furniture — running head, folio, background, grid — on a master and apply it to pages with apply_master, rather than copying it onto every page. Items go on a master with add_text_frame / add_shape using master and masterPage.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `op` * | `create` \| `delete` \| `rename` \| `pages` \| `parent` | Which operation this is. |
+| `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
+| `prefix` | string | One-letter prefix, e.g. "B". Only for create, rename. |
+| `name` | string | Name, e.g. "Chapter". Only for create, rename. |
+| `copyFrom` | string | Master to copy (default: the first one). Only for create. |
+| `keepItems` | boolean | Copy the items of that master (default true). Only for create. |
+| `pages` | integer | Pages in the spread: 1 single-sided, 2 facing, more for a gatefold. Only for create. |
+| `basedOn` | string | Another master this one is based on, so its items show through and follow changes. Only for create. |
+| `master` | string | Master page, e.g. "A-Master" or its id. Only for delete, rename, pages, parent. |
+| `replaceWith` | string | Master for the pages that used it (default: none). Only for delete. |
+| `count` | integer | Only for pages. |
+| `parent` | string | The master it is based on, or "none". Only for parent. |
 
 # Prompts
 

@@ -20,6 +20,7 @@ import {
 } from './geometry.ts';
 import { defaultLayerId, escapeAttr, findLayer } from './layers.ts';
 import {
+  documentPageSize,
   findPage,
   listPages,
   type PageInfo,
@@ -37,6 +38,7 @@ import {
   firstChild,
   fragment,
   insertAfter,
+  numAttr,
   propertiesOf,
   removeElement,
   setProperty,
@@ -76,6 +78,10 @@ export interface ItemInfo {
   strokeWeight: number;
   locked: boolean;
   onMaster: string | undefined;
+  /** Which page of a multi-page master the item sits on (1-based); absent for a single-page master. */
+  masterPage?: number;
+  /** Spread coordinates of the top-left of the page (or master page) the item belongs to. */
+  origin?: Point;
   children?: ItemInfo[];
 }
 
@@ -154,15 +160,72 @@ function displayName(el: Element): string | undefined {
  * coordinates relative to that page (see `resolveContainer`), so they have to be read back against
  * the same origin — otherwise a frame put at 18, 278 mm reports as -87, 129.5 mm.
  */
-function masterPageOrigin(doc: IdmlDocument, masterSpreadId: string): Point | undefined {
+/** Turns "left"/"right"/a 1-based number into an index into a master spread's pages. */
+export function masterPageIndex(page: number | 'left' | 'right' | undefined, count: number): number {
+  if (page === undefined || page === 'left') return 0;
+  if (page === 'right') return Math.max(0, count - 1);
+  return Math.max(0, Math.floor(page) - 1);
+}
+
+/**
+ * The master page an item sits on, and where that page starts. A master spread can hold several
+ * pages — two for facing pages, more for a gatefold — and an item belongs to the one it is over.
+ */
+function masterPageOrigin(
+  doc: IdmlDocument,
+  masterSpreadId: string,
+  bounds?: Rect,
+): { origin: Point; index: number; count: number } | undefined {
   for (const ms of doc.masterSpreads()) {
     if (attr(ms, 'Self') !== masterSpreadId) continue;
-    const page = children(ms, 'Page')[0];
-    if (!page) return undefined;
-    const m = parseMatrix(attr(page, 'ItemTransform'));
-    return { x: m[4], y: m[5] };
+    const mpages = children(ms, 'Page');
+    if (!mpages.length) return undefined;
+    const origins = mpages.map((p) => parseMatrix(attr(p, 'ItemTransform'))[4]);
+    let index = 0;
+    if (mpages.length > 1 && bounds) {
+      const middle = bounds.x + bounds.width / 2;
+      for (let i = 0; i < origins.length; i++) if (middle >= origins[i]!) index = i;
+    }
+    const m = parseMatrix(attr(mpages[index]!, 'ItemTransform'));
+    return { origin: { x: m[4], y: m[5] }, index, count: mpages.length };
   }
   return undefined;
+}
+
+/**
+ * The page an item belongs to, as a box in spread coordinates — a document page or the master page
+ * of the spread it is on. Alignment and placement checks need the same box for both.
+ */
+export function pageBoxOfItem(
+  doc: IdmlDocument,
+  info: ItemInfo,
+): { x: number; y: number; width: number; height: number; margins: PageInfo['margins'] } | undefined {
+  if (info.page !== undefined) {
+    const page = listPages(doc).find((p) => p.index === info.page);
+    if (!page) return undefined;
+    return { ...page.origin, width: page.width, height: page.height, margins: page.margins };
+  }
+  if (!info.onMaster || !info.origin) return undefined;
+  const master = doc
+    .masterSpreads()
+    .find((m) => (attr(m, 'Name') ?? '') === info.onMaster || attr(m, 'Self') === info.onMaster);
+  const mpage = master
+    ? (children(master, 'Page')[(info.masterPage ?? 1) - 1] ?? children(master, 'Page')[0])
+    : undefined;
+  const size = documentPageSize(doc);
+  const margin = mpage ? firstChild(mpage, 'MarginPreference') : undefined;
+  return {
+    x: info.origin.x,
+    y: info.origin.y,
+    width: size.width,
+    height: size.height,
+    margins: {
+      top: margin ? numAttr(margin, 'Top', 0) : 0,
+      bottom: margin ? numAttr(margin, 'Bottom', 0) : 0,
+      left: margin ? numAttr(margin, 'Left', 0) : 0,
+      right: margin ? numAttr(margin, 'Right', 0) : 0,
+    },
+  };
 }
 
 export function itemInfo(
@@ -175,7 +238,8 @@ export function itemInfo(
 ): ItemInfo {
   const spreadBounds = itemSpreadBounds(el, parentTransform);
   const page = spreadBounds && !master ? pageForSpreadRect(pages, spreadId, spreadBounds) : undefined;
-  const origin = page?.origin ?? (master ? masterPageOrigin(doc, spreadId) : undefined);
+  const onMasterPage = master ? masterPageOrigin(doc, spreadId, spreadBounds) : undefined;
+  const origin = page?.origin ?? onMasterPage?.origin;
   const type = classify(el);
   const storyId = el.tagName === 'TextFrame' ? attr(el, 'ParentStory') : undefined;
   let text: string | undefined;
@@ -211,6 +275,8 @@ export function itemInfo(
     strokeWeight: Number(attr(el, 'StrokeWeight') ?? 0) || 0,
     locked: attr(el, 'Locked') === 'true',
     onMaster: master,
+    masterPage: onMasterPage && onMasterPage.count > 1 ? onMasterPage.index + 1 : undefined,
+    origin,
   };
   if (el.tagName === 'Group') {
     const m = multiply(parentTransform, parseMatrix(attr(el, 'ItemTransform')));
@@ -393,7 +459,10 @@ export function findItem(doc: IdmlDocument, ref: string, page?: number | string)
 
 // ---- creation ------------------------------------------------------------------------------
 
-export type Target = { page: number | string } | { master: string };
+export type Target =
+  | { page: number | string }
+  /** `masterPage` is 1-based within the master spread; "left" is its first page, "right" its last. */
+  | { master: string; masterPage?: number | 'left' | 'right' };
 
 export interface NewItemOptions {
   /** Page-relative rectangle in points. */
@@ -421,8 +490,15 @@ export function resolveContainer(
           (n) => (n ?? '').toLowerCase() === target.master.toLowerCase(),
         )
       ) {
-        // master pages: use the first page's origin (left page for facing masters -> the user gives page-relative coords of the first page)
-        const page = children(ms, 'Page')[0];
+        // Coordinates are relative to the master page being placed on: its first page unless
+        // another one was asked for.
+        const mpages = children(ms, 'Page');
+        const index = masterPageIndex(target.masterPage, mpages.length);
+        if (index >= mpages.length)
+          throw new Error(
+            `Master "${target.master}" has ${mpages.length} page(s), so there is no page ${index + 1}.`,
+          );
+        const page = mpages[index];
         const pi = page ? parseMatrix(attr(page, 'ItemTransform')) : IDENTITY;
         return { container: ms, part, origin: { x: pi[4], y: pi[5] } };
       }
@@ -598,7 +674,7 @@ export function createLine(
   };
   const el = fragment(
     container.ownerDocument!,
-    `<GraphicLine ${commonAttrs(doc, { rect, name: options.name, layer: options.layer }, '[None]')} ContentType="Unassigned" StoryTitle="$ID/" FillColor="Swatch/None" StrokeColor="Color/Black" StrokeWeight="${options.strokeWeight ?? 1}"><Properties><PathGeometry/></Properties>${TEXT_WRAP}</GraphicLine>`,
+    `<GraphicLine ${commonAttrs(doc, { rect, name: options.name, layer: options.layer }, '[None]')} ContentType="Unassigned" FillColor="Swatch/None" StrokeColor="Color/Black" StrokeWeight="${options.strokeWeight ?? 1}"><Properties><PathGeometry/></Properties>${TEXT_WRAP}</GraphicLine>`,
   );
   writePaths(el, [linePath(from, to)]);
   if (options.stroke !== undefined || options.strokeWeight !== undefined)

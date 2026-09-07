@@ -6,7 +6,7 @@
 import type { GlyphRun } from 'fontkit';
 import type { IdmlDocument } from '../idml/document.ts';
 import { anchorBounds, readPaths } from '../idml/geometry.ts';
-import { type Run, readStory } from '../idml/stories.ts';
+import { NO_CHARACTER_STYLE, type Paragraph, type Run, readStory } from '../idml/stories.ts';
 import { styleElements } from '../idml/styles.ts';
 import { attr, children, type Element, firstChild, getProperty, propertiesOf } from '../idml/xml.ts';
 import type { FontCatalog, FontFace, FontMatch } from './fonts.ts';
@@ -178,6 +178,131 @@ export function applyElementAttrs(attrs: TextAttrs, el: Element | undefined): Te
 }
 
 /** Resolves style inheritance (BasedOn chains) for paragraph and character styles. */
+interface AutomaticStyleRule {
+  characterStyle: string;
+  ranges: (text: string) => [number, number][];
+}
+
+/** The delimiters InDesign offers a nested style, as sticky patterns matched from the cursor. */
+const NESTED_DELIMITERS: Record<string, () => RegExp> = {
+  AnyWord: () => /\S+\s*/y,
+  Words: () => /\S+\s*/y,
+  AnyCharacter: () => /[\s\S]/y,
+  Characters: () => /[\s\S]/y,
+  Sentence: () => /[^.!?]*[.!?]["'”’)]*\s*/y,
+  Sentences: () => /[^.!?]*[.!?]["'”’)]*\s*/y,
+  Letters: () => /[^\p{L}]*\p{L}+/uy,
+  Digits: () => /\D*\d+/y,
+  Tabs: () => /[^\t]*\t/y,
+  // A forced line break is U+2028 in a story; a plain newline ends the paragraph anyway.
+  ForcedLineBreak: () => /[^\n\u2028]*[\n\u2028]/y,
+  EmSpace: () => /[^\u2003]*\u2003/y,
+  EnSpace: () => /[^\u2002]*\u2002/y,
+  NonbreakingSpace: () => /[^\u00a0\u202f]*[\u00a0\u202f]/y,
+  IndentHereTab: () => /[^\t]*\t/y,
+  // "End nested style here" is a zero-width marker InDesign puts in the text.
+  EndNestedStyle: () => /[^\ufeff]*\ufeff/y,
+};
+
+/**
+ * Nested styles: each one runs from where the previous one stopped, through its delimiter.
+ *
+ * They are a sequence rather than independent rules — "the first two words, then everything up to
+ * the colon" — so they are evaluated together over the paragraph's text.
+ */
+function nestedStyleRules(style: Element): AutomaticStyleRule[] {
+  const props = propertiesOf(style);
+  const list = props ? firstChild(props, 'AllNestedStyles') : undefined;
+  if (!list) return [];
+  const steps = children(list, 'ListItem')
+    .map((item) => {
+      const delimiter = firstChild(item, 'Delimiter');
+      return {
+        characterStyle: firstChild(item, 'AppliedCharacterStyle')?.textContent?.trim() ?? '',
+        through: delimiter?.textContent?.trim() ?? '',
+        kind: attr(delimiter, 'type'),
+        repetition: Math.max(1, Number(firstChild(item, 'Repetition')?.textContent ?? 1)),
+        inclusive: (firstChild(item, 'Inclusive')?.textContent ?? 'true').trim() !== 'false',
+      };
+    })
+    .filter((step) => step.characterStyle && step.through);
+  if (!steps.length) return [];
+
+  // One rule per step, all sharing a walk over the text so each starts where the last ended.
+  const spans = new Map<string, [number, number][]>();
+  const compute = (text: string) => {
+    const key = text;
+    const cached = spans.get(key);
+    if (cached) return;
+    let at = 0;
+    for (const [index, step] of steps.entries()) {
+      const start = at;
+      let end = -1;
+      for (let i = 0; i < step.repetition; i++) {
+        if (step.kind === 'enumeration') {
+          const make = NESTED_DELIMITERS[step.through];
+          if (!make) break;
+          const re = make();
+          re.lastIndex = at;
+          const m = re.exec(text);
+          if (!m) break;
+          at = re.lastIndex;
+          end = at;
+        } else {
+          const found = text.indexOf(step.through, at);
+          if (found < 0) break;
+          at = found + step.through.length;
+          end = step.inclusive ? at : found;
+        }
+      }
+      if (end > start) spans.set(`${key}|${index}`, [[start, end]]);
+      else at = start;
+    }
+    spans.set(key, []);
+  };
+  return steps.map((step, index) => ({
+    characterStyle: step.characterStyle,
+    ranges: (text) => {
+      compute(text);
+      return spans.get(`${text}|${index}`) ?? [];
+    },
+  }));
+}
+
+/** GREP styles: every match of a pattern, anywhere in the paragraph. */
+function grepStyleRules(style: Element): AutomaticStyleRule[] {
+  const props = propertiesOf(style);
+  // InDesign spells this one AllGREPStyles.
+  const list = props ? firstChild(props, 'AllGREPStyles') : undefined;
+  if (!list) return [];
+  const rules: AutomaticStyleRule[] = [];
+  for (const item of children(list, 'ListItem')) {
+    const characterStyle = firstChild(item, 'AppliedCharacterStyle')?.textContent?.trim();
+    const pattern = firstChild(item, 'GrepExpression')?.textContent;
+    if (!characterStyle || !pattern) continue;
+    let re: RegExp;
+    try {
+      // InDesign's GREP is PCRE; the common subset is JavaScript's own syntax.
+      re = new RegExp(pattern, 'gu');
+    } catch {
+      continue;
+    }
+    rules.push({
+      characterStyle,
+      ranges: (text) => {
+        const out: [number, number][] = [];
+        re.lastIndex = 0;
+        for (const m of text.matchAll(re)) {
+          const at = m.index ?? 0;
+          if (m[0].length) out.push([at, at + m[0].length]);
+        }
+        return out;
+      },
+    });
+  }
+  return rules;
+}
+
 export class StyleResolver {
   private para = new Map<string, Element>();
   private char = new Map<string, Element>();
@@ -209,6 +334,51 @@ export class StyleResolver {
       if (!map.has(parent)) parent = [...map.keys()].find((k) => attr(map.get(k)!, 'Name') === basedOn);
     }
     return [...this.chain(map, kind, parent, seen), el];
+  }
+
+  /**
+   * Splits a paragraph's runs where its style's nested and GREP styles apply.
+   *
+   * InDesign works these out while composing — they are not in the story — so a preview that
+   * ignores them shows plain text where the printed page has a small-caps lead-in or a coloured
+   * acronym. A character style applied by hand wins, as it does in InDesign.
+   */
+  applyAutomaticStyles(para: Paragraph): Run[] {
+    const style = para.style ? this.para.get(para.style) : undefined;
+    if (!style) return para.runs;
+    const rules = [...this.chain(this.para, 'ParagraphStyle', para.style)].flatMap((el) => [
+      ...nestedStyleRules(el),
+      ...grepStyleRules(el),
+    ]);
+    if (!rules.length) return para.runs;
+    const text = para.runs.map((r) => r.text).join('');
+    if (!text) return para.runs;
+    const marks = new Array<string | undefined>(text.length);
+    for (const rule of rules)
+      for (const [from, to] of rule.ranges(text))
+        for (let i = from; i < to && i < marks.length; i++) marks[i] ??= rule.characterStyle;
+    if (!marks.some(Boolean)) return para.runs;
+
+    const out: Run[] = [];
+    let at = 0;
+    for (const run of para.runs) {
+      const start = at;
+      at += run.text.length;
+      // A run with its own character style, an anchored item or a marker is left alone.
+      if (!run.text || (run.characterStyle && run.characterStyle !== NO_CHARACTER_STYLE)) {
+        out.push(run);
+        continue;
+      }
+      let from = 0;
+      while (from < run.text.length) {
+        const mark = marks[start + from];
+        let to = from + 1;
+        while (to < run.text.length && marks[start + to] === mark) to++;
+        out.push({ ...run, text: run.text.slice(from, to), characterStyle: mark ?? run.characterStyle });
+        from = to;
+      }
+    }
+    return out;
   }
 
   paragraph(self: string | undefined): TextAttrs {
@@ -311,8 +481,54 @@ export interface ComposedFrame {
 }
 
 function applyCapitalization(text: string, cap: string): string {
-  if (cap === 'AllCaps' || cap === 'CapToSmallCap') return text.toUpperCase();
+  if (cap === 'AllCaps') return text.toUpperCase();
   return text;
+}
+
+/** How much smaller a synthesised small capital is than a full one. */
+const SMALL_CAP_SCALE = 0.72;
+
+/**
+ * Splits a run into the pieces small caps need: the letters that become small capitals are set as
+ * capitals at a smaller size, the rest keeps the run's own size.
+ *
+ * InDesign uses the font's own small-cap glyphs where it has them and synthesises the rest; a
+ * preview that ignores capitalisation altogether shows lower case where the page shows capitals.
+ */
+interface ShapedPart {
+  text: string;
+  attrs: TextAttrs;
+  at: number;
+  /** OpenType features for this piece, e.g. the font's own small capitals. */
+  features?: string[];
+}
+
+function smallCapsParts(text: string, attrs: TextAttrs, face: FontFace): ShapedPart[] {
+  const cap = attrs.capitalization;
+  if (cap !== 'SmallCaps' && cap !== 'CapToSmallCap') {
+    const shown = applyCapitalization(text, cap);
+    return shown ? [{ text: shown, attrs, at: 0 }] : [];
+  }
+  // A font with real small capitals draws them at the text size through its "smcp" feature;
+  // without them the letters are set as capitals at a smaller size, as InDesign synthesises them.
+  const designed = (face.availableFeatures ?? []).includes('smcp');
+  // "Small caps" shrinks what was lower case; "cap to small cap" shrinks the capitals as well.
+  const shrinks = (ch: string) =>
+    cap === 'CapToSmallCap' ? ch !== ch.toLowerCase() || ch !== ch.toUpperCase() : ch !== ch.toUpperCase();
+  const small = { ...attrs, size: attrs.size * SMALL_CAP_SCALE };
+  const parts: ShapedPart[] = [];
+  let at = 0;
+  while (at < text.length) {
+    const isSmall = shrinks(text[at]!);
+    let to = at + 1;
+    while (to < text.length && shrinks(text[to]!) === isSmall) to++;
+    const piece = text.slice(at, to);
+    if (!isSmall) parts.push({ text: piece, attrs, at });
+    else if (designed) parts.push({ text: piece, attrs, at, features: ['smcp'] });
+    else parts.push({ text: piece.toUpperCase(), attrs: small, at });
+    at = to;
+  }
+  return parts;
 }
 
 /** The widest free horizontal run between `from` and `to` at a given vertical band. */
@@ -392,7 +608,10 @@ export class Composer {
       const pa = this.styles.paragraph(para.style);
       const pAttrs = applyElementAttrs(pa, para.attrs ? fakeElement(para.attrs) : undefined);
       paraAttrs.push(pAttrs);
-      for (const run of para.runs)
+      // Nested and GREP styles belong to the paragraph style and are worked out as the text is
+      // laid out, so the runs have to be split here rather than in the story.
+      const runs = this.styles.applyAutomaticStyles(para);
+      for (const run of runs)
         glyphs.push(...this.shapeRun(resolveVariable(doc, resolveMarker(run, markers), markers), pAttrs));
       if (pi < paragraphs.length - 1) glyphs.push(null);
     });
@@ -443,13 +662,18 @@ export class Composer {
     );
     const match = this.faceFor(attrs);
     if (run.anchored) return [this.shapeAnchored(run.anchored, attrs, match.face, match)];
-    const text = applyCapitalization(run.text, attrs.capitalization);
-    if (!text) return [];
+    if (!run.text) return [];
     const out: ShapedGlyph[] = [];
-    // A character the font does not have would come out as .notdef — a bullet or a tick that
-    // simply vanishes from the preview. Shape those stretches with a font that does have it.
-    for (const piece of this.splitByCoverage(text, match, attrs)) {
-      out.push(...this.shapeWithFace(piece.text, piece.match, attrs, piece.at));
+    // Small caps set the lower-case letters as capitals at a smaller size, so the run is shaped in
+    // pieces; everything else is one piece with the run's own attributes.
+    for (const part of smallCapsParts(run.text, attrs, match.face)) {
+      // A character the font does not have would come out as .notdef — a bullet or a tick that
+      // simply vanishes from the preview. Shape those stretches with a font that does have it.
+      for (const piece of this.splitByCoverage(part.text, match, part.attrs)) {
+        out.push(
+          ...this.shapeWithFace(piece.text, piece.match, part.attrs, part.at + piece.at, part.features),
+        );
+      }
     }
     return out;
   }
@@ -484,10 +708,16 @@ export class Composer {
   }
 
   /** Shapes one stretch of text with one face; `at` offsets the glyphs' character indices. */
-  private shapeWithFace(text: string, match: FontMatch, attrs: TextAttrs, at: number): ShapedGlyph[] {
+  private shapeWithFace(
+    text: string,
+    match: FontMatch,
+    attrs: TextAttrs,
+    at: number,
+    extraFeatures?: string[],
+  ): ShapedGlyph[] {
     const face = match.face;
     const scale = (attrs.size / face.unitsPerEm) * (attrs.horizontalScale / 100);
-    const features = attrs.kerning === 'off' ? ['-kern'] : ['kern', 'liga'];
+    const features = [...(attrs.kerning === 'off' ? ['-kern'] : ['kern', 'liga']), ...(extraFeatures ?? [])];
     let glyphRun: GlyphRun;
     try {
       glyphRun = face.layout(text, features);

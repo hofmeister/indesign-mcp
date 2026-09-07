@@ -17,7 +17,7 @@ import {
 } from '../idml/geometry.ts';
 import { graphicChild, isPageItem, itemSpreadBounds, linkUri, linkUriToPath } from '../idml/items.ts';
 import { layerElements } from '../idml/layers.ts';
-import { findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
+import { appliedMasterOf, findPage, listPages, type PageInfo, pageForSpreadRect } from '../idml/pages.ts';
 import { readStoryPlainText, storyHasPageNumberMarker } from '../idml/stories.ts';
 import { parseCellName, tableInfo, tablesIn } from '../idml/tables.ts';
 import { attr, children, type Element, firstChild, getProperty, numAttr } from '../idml/xml.ts';
@@ -80,7 +80,8 @@ class RenderContext {
     // designmap lists layers top-most first; draw bottom-most first
     const layers = layerElements(doc);
     layers.forEach((l, i) => {
-      this.layerOrder.set(attr(l, 'Self') ?? '', layers.length - i);
+      // Designmap lists layers bottom-most first, so the later a layer comes, the higher it sits.
+      this.layerOrder.set(attr(l, 'Self') ?? '', i);
       if (attr(l, 'Visible') === 'false') this.hiddenLayers.add(attr(l, 'Self') ?? '');
     });
   }
@@ -879,12 +880,17 @@ function renderTablesOf(
   const tables = tablesIn(story);
   if (!tables.length) return '';
   const lastLine = lines.filter((l) => l.glyphs.length).at(-1);
-  let y = b.y + geom.inset.top + (lastLine ? lastLine.baseline + lastLine.descent : 0);
+  const top = b.y + geom.inset.top + (lastLine ? lastLine.baseline + lastLine.descent : 0);
+  const bottom = b.y + b.height - geom.inset.bottom;
+  let y = top;
   const parts: string[] = [];
   for (const table of tables) {
-    const drawn = renderTable(ctx, table, b.x + geom.inset.left, y, innerWidth);
-    parts.push(drawn.svg);
-    y += drawn.height;
+    const height = measureTableHeight(ctx.doc, table, innerWidth);
+    // A table cannot be cut in half: one that does not fit goes overset whole, and InDesign draws
+    // nothing at all. Showing the rows that happen to fit would hide the problem.
+    if (y + height > bottom + 0.5) break;
+    parts.push(renderTable(ctx, table, b.x + geom.inset.left, y, innerWidth).svg);
+    y += height;
   }
   return parts.join('');
 }
@@ -969,13 +975,55 @@ function sortedItems(ctx: RenderContext, container: Element): Element[] {
     .map((x) => x.el);
 }
 
-/** Master page items that belong to `page`, translated into the document spread's coordinates. */
-function renderMasterItems(ctx: RenderContext, page: PageInfo): string {
-  if (!page.appliedMaster) return '';
-  const master = ctx.doc.masterSpreads().find((m) => attr(m, 'Self') === page.appliedMaster);
-  if (!master) return '';
+/**
+ * Master page items that belong to `page`, translated into the document spread's coordinates.
+ *
+ * A master can itself be based on another master, so the chain is drawn oldest ancestor first —
+ * the same order InDesign stacks them in.
+ */
+function renderMasterItemsByLayer(ctx: RenderContext, page: PageInfo): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  const add = (parts: [number, string][]) => {
+    for (const [layer, svg] of parts) (out.get(layer) ?? out.set(layer, []).get(layer)!).push(svg);
+  };
+  if (page.appliedMaster)
+    for (const self of masterChain(ctx, page.appliedMaster)) add(renderOneMaster(ctx, page, self));
+  // A master applied to a neighbour in the same spread still paints this page with any item that
+  // crosses the spine: InDesign treats such an item as belonging to the spread rather than to one
+  // page, and draws it over what this page's own master put down.
+  for (const other of ctx.pages) {
+    if (other.spreadId !== page.spreadId || other.id === page.id || !other.appliedMaster) continue;
+    for (const self of masterChain(ctx, other.appliedMaster))
+      add(renderOneMaster(ctx, page, self, { crossingOnly: true }));
+  }
+  return out;
+}
+
+/** A master and the masters it is based on, oldest ancestor first. */
+function masterChain(ctx: RenderContext, masterId: string): string[] {
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  let id: string | undefined = masterId;
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    chain.unshift(id);
+    const spread = ctx.doc.masterSpreads().find((m) => attr(m, 'Self') === id);
+    id = spread ? appliedMasterOf(children(spread, 'Page')[0]) : undefined;
+  }
+  return chain;
+}
+
+/** The items of one master spread as they appear on `page`, with the layer each one sits on. */
+function renderOneMaster(
+  ctx: RenderContext,
+  page: PageInfo,
+  masterId: string,
+  options: { crossingOnly?: boolean } = {},
+): [number, string][] {
+  const master = ctx.doc.masterSpreads().find((m) => attr(m, 'Self') === masterId);
+  if (!master) return [];
   const mpages = children(master, 'Page');
-  if (!mpages.length) return '';
+  if (!mpages.length) return [];
   let mp = mpages[0]!;
   if (mpages.length > 1) mp = page.side === 'left' ? mpages[0]! : mpages[mpages.length - 1]!;
   const mb = (attr(mp, 'GeometricBounds') ?? '0 0 0 0').split(/\s+/).map(Number);
@@ -991,7 +1039,7 @@ function renderMasterItems(ctx: RenderContext, page: PageInfo): string {
   const overridden = new Set(
     (attr(ctx.doc.findBySelf(page.id)?.element ?? mp, 'OverrideList') ?? '').split(/\s+/).filter(Boolean),
   );
-  const out: string[] = [];
+  const out: [number, string][] = [];
   const previousPage = ctx.currentPage;
   ctx.currentPage = page;
   for (const el of sortedItems(ctx, master)) {
@@ -1005,10 +1053,14 @@ function renderMasterItems(ctx: RenderContext, page: PageInfo): string {
       !(b.x < mpRect.x + mpRect.width && b.x + b.width > mpRect.x && b.width > mpRect.width * 0.5)
     )
       continue;
-    out.push(renderItem(ctx, el, delta));
+    // For a master applied to another page of this spread, only the items that reach across the
+    // spine come over; the rest stay on their own page.
+    if (options.crossingOnly && b.x >= mpRect.x - 0.5 && b.x + b.width <= mpRect.x + mpRect.width + 0.5)
+      continue;
+    out.push([ctx.layerOrder.get(attr(el, 'ItemLayer') ?? '') ?? 0, renderItem(ctx, el, delta)]);
   }
   ctx.currentPage = previousPage;
-  return out.join('');
+  return out;
 }
 
 function renderPageBackground(ctx: RenderContext, page: PageInfo, bleed: number): string {
@@ -1063,6 +1115,33 @@ function assemble(ctx: RenderContext, body: string, view: Rect): SvgResult {
 }
 
 /** Renders one page (with its master items) to SVG. */
+/**
+ * The items of a page in the order InDesign draws them: layer by layer from the bottom up, and
+ * inside each layer the master's items under the page's own.
+ *
+ * Drawing every master item first is wrong whenever a page item sits on a lower layer than a
+ * master item — a background on its own layer then covers the running head instead of sitting
+ * under it, or the other way round, and the preview disagrees with InDesign.
+ */
+function renderPageContent(ctx: RenderContext, pages: PageInfo[], spread: Element): string {
+  const master = new Map<number, string[]>();
+  for (const page of pages)
+    for (const [layer, parts] of renderMasterItemsByLayer(ctx, page))
+      (master.get(layer) ?? master.set(layer, []).get(layer)!).push(...parts);
+  const own = new Map<number, string[]>();
+  for (const el of sortedItems(ctx, spread)) {
+    const layer = ctx.layerOrder.get(attr(el, 'ItemLayer') ?? '') ?? 0;
+    (own.get(layer) ?? own.set(layer, []).get(layer)!).push(renderItem(ctx, el, IDENTITY));
+  }
+  const layers = [...new Set([...master.keys(), ...own.keys()])].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (const layer of layers) {
+    parts.push(...(master.get(layer) ?? []));
+    parts.push(...(own.get(layer) ?? []));
+  }
+  return parts.join('');
+}
+
 export function renderPageSvg(
   doc: IdmlDocument,
   pageRef: number | string,
@@ -1078,8 +1157,7 @@ export function renderPageSvg(
     `<rect x="${fmt(page.origin.x - bleed - 1)}" y="${fmt(page.origin.y - bleed - 1)}" width="${fmt(page.width + 2 * bleed + 2)}" height="${fmt(page.height + 2 * bleed + 2)}" fill="rgb(255,255,255)"/>`,
   );
   parts.push(renderPageBackground(ctx, page, bleed));
-  parts.push(renderMasterItems(ctx, page));
-  for (const el of sortedItems(ctx, spread)) parts.push(renderItem(ctx, el, IDENTITY));
+  parts.push(renderPageContent(ctx, [page], spread));
   if (options.showGuides) parts.push(renderGuides(page));
   const view: Rect = {
     x: page.origin.x - bleed,
@@ -1110,8 +1188,7 @@ export function renderSpreadSvg(
     `<rect x="${fmt(minX - 1)}" y="${fmt(minY - 1)}" width="${fmt(maxX - minX + 2)}" height="${fmt(maxY - minY + 2)}" fill="rgb(235,235,235)"/>`,
   ];
   for (const p of pages) parts.push(renderPageBackground(ctx, p, bleed));
-  for (const p of pages) parts.push(renderMasterItems(ctx, p));
-  for (const el of sortedItems(ctx, spread)) parts.push(renderItem(ctx, el, IDENTITY));
+  parts.push(renderPageContent(ctx, pages, spread));
   if (options.showGuides) for (const p of pages) parts.push(renderGuides(p));
   return assemble(ctx, parts.join(''), { x: minX, y: minY, width: maxX - minX, height: maxY - minY });
 }
@@ -1147,9 +1224,34 @@ export interface OversetFrame {
   page: number | undefined;
   storyId: string;
   text: string;
+  /** True when it is a table running past the frame rather than text. */
+  table: boolean;
 }
 
 /** Text frames whose story does not fit (InDesign's red "+" overset marker). */
+/**
+ * Whether the tables in a frame run past its bottom edge.
+ *
+ * A table is not text: it is laid out row by row and simply keeps going, so a frame whose table
+ * grew — wider insets, a bigger paragraph style — clips it with nothing else to notice.
+ */
+function tablesOverflow(ctx: RenderContext, frame: Element): boolean {
+  const story = ctx.doc.story(attr(frame, 'ParentStory') ?? '');
+  if (!story) return false;
+  const tables = tablesIn(story);
+  if (!tables.length) return false;
+  const b = anchorBounds(readPaths(frame), parseMatrix(attr(frame, 'ItemTransform')));
+  const geom = frameGeometry(frame);
+  const innerWidth = geom.width - geom.inset.left - geom.inset.right;
+  const lastLine = ctx
+    .linesFor(frame)
+    .lines.filter((l) => l.glyphs.length)
+    .at(-1);
+  let height = lastLine ? lastLine.baseline + lastLine.descent : 0;
+  for (const table of tables) height += measureTableHeight(ctx.doc, table, innerWidth);
+  return height > b.height - geom.inset.top - geom.inset.bottom + 0.5;
+}
+
 export function findOversetFrames(doc: IdmlDocument): OversetFrame[] {
   const ctx = new RenderContext(doc, {});
   const out: OversetFrame[] = [];
@@ -1161,8 +1263,12 @@ export function findOversetFrames(doc: IdmlDocument): OversetFrame[] {
         const next = attr(el, 'NextTextFrame');
         if (!next || next === 'n') {
           let overset = false;
+          let table = false;
           try {
-            overset = ctx.linesFor(el).overset;
+            // A frame holding a table that does not fit is a cut-off table, whatever the story's
+            // own lines do: the empty paragraph beside a tall table goes overset as well.
+            table = tablesOverflow(ctx, el);
+            overset = table || ctx.linesFor(el).overset;
           } catch {
             overset = false;
           }
@@ -1177,6 +1283,7 @@ export function findOversetFrames(doc: IdmlDocument): OversetFrame[] {
               page,
               storyId,
               text: story ? readStoryPlainText(story).slice(0, 80) : '',
+              table,
             });
           }
         }

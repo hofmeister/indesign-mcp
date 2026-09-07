@@ -183,13 +183,68 @@ export interface HyperlinkInfo {
   text: string;
 }
 
-function designmapAnchor(doc: IdmlDocument, tagNames: string[]): Element | undefined {
+/**
+ * The designmap has a fixed element order, so a new child goes after the last element that may
+ * precede it — not simply at the end, which puts it after the ones that must follow.
+ */
+const DESIGNMAP_ORDER = [
+  'Language',
+  'idPkg:Graphic',
+  'idPkg:Fonts',
+  'KinsokuTable',
+  'MojikumiTable',
+  'idPkg:Styles',
+  'NumberingList',
+  'NamedGrid',
+  'MotionPreset',
+  'Condition',
+  'ConditionSet',
+  'idPkg:Preferences',
+  'LinkedStoryOption',
+  'TaggedPDFPreference',
+  'MetadataPacketPreference',
+  'WatermarkPreference',
+  'ConditionalTextPreference',
+  'TextVariable',
+  'idPkg:Tags',
+  'Layer',
+  'idPkg:MasterSpread',
+  'idPkg:Spread',
+  'Section',
+  'DocumentUser',
+  'CrossReferenceFormat',
+  'Index',
+  'idPkg:BackingStory',
+  'idPkg:Story',
+  'HyperlinkPageDestination',
+  'HyperlinkURLDestination',
+  'HyperlinkExternalPageDestination',
+  'HyperlinkPageItemSource',
+  'Hyperlink',
+  'idPkg:Mapping',
+  'Bookmark',
+  'PreflightProfile',
+];
+
+/** Puts `el` into the designmap where the schema expects an element of that name. */
+function insertIntoDesignmap(doc: IdmlDocument, el: Element, tagName: string): void {
   const kids = children(doc.root);
-  for (const name of tagNames) {
-    const hit = kids.filter((c) => c.tagName === name).at(-1);
-    if (hit) return hit;
+  const index = DESIGNMAP_ORDER.indexOf(tagName);
+  if (index < 0) {
+    insertAfter(doc.root, el, kids.at(-1));
+    return;
   }
-  return kids.filter((c) => c.tagName.startsWith('idPkg:')).at(-1);
+  const before = new Set(DESIGNMAP_ORDER.slice(0, index + 1));
+  const previous = kids.filter((c) => before.has(c.tagName)).at(-1);
+  if (previous) {
+    insertAfter(doc.root, el, previous);
+    return;
+  }
+  // Nothing that may precede it yet: go in front of the first thing that has to follow.
+  const after = new Set(DESIGNMAP_ORDER.slice(index + 1));
+  const next = kids.find((c) => after.has(c.tagName));
+  if (next) doc.root.insertBefore(el, next);
+  else insertAfter(doc.root, el, kids.at(-1));
 }
 
 /**
@@ -246,12 +301,12 @@ export function createHyperlink(
       doc.designmap,
       `<HyperlinkURLDestination Self="${destId}" Name="${escapeAttr(url)}" DestinationURL="${escapeAttr(url)}" DestinationUniqueKey="${key}" Hidden="false"/>`,
     );
-    insertAfter(doc.root, dest, designmapAnchor(doc, ['HyperlinkURLDestination', 'Hyperlink']));
+    insertIntoDesignmap(doc, dest, 'HyperlinkURLDestination');
     const link = fragment(
       doc.designmap,
       `<Hyperlink Self="${linkId}" Name="${escapeAttr(options.name ?? find)}" Source="${sourceId}" Visible="false" Highlight="None" Width="Thin" BorderStyle="Solid" Hidden="false" DestinationUniqueKey="${key}"><Properties><BorderColor type="enumeration">Black</BorderColor><Destination type="object">${destId}</Destination></Properties></Hyperlink>`,
     );
-    insertAfter(doc.root, link, designmapAnchor(doc, ['Hyperlink', 'HyperlinkURLDestination']));
+    insertIntoDesignmap(doc, link, 'Hyperlink');
     made.push({ id: linkId, name: options.name ?? find, url, text: find });
     if (!options.all) break;
   }
@@ -318,7 +373,7 @@ export function setSection(doc: IdmlDocument, spec: SectionSpec): { name: string
       `<Section Self="${doc.newId()}" Length="1" Name="" ContinueNumbering="false" IncludeSectionPrefix="false" Marker="" PageStart="${pageId}" SectionPrefix=""><Properties><PageNumberStyle type="enumeration">Arabic</PageNumberStyle></Properties></Section>`,
     );
     const existing = children(doc.root, 'Section');
-    insertAfter(doc.root, section, existing.at(-1) ?? children(doc.root, 'Layer').at(-1));
+    insertIntoDesignmap(doc, section, 'Section');
   }
   if (spec.pageNumberStart !== undefined) {
     section.setAttribute('PageNumberStart', String(Math.max(1, Math.floor(spec.pageNumberStart))));

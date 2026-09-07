@@ -60,7 +60,10 @@ export function styleElements(
 
 export function styleInfo(el: Element, group?: string): StyleInfo {
   const attributes: Record<string, string> = {};
-  for (let i = 0; i < el.attributes.length; i++) {
+  // A built-in style carries every InDesign default explicitly — hundreds of attributes that say
+  // nothing about this document and bury the styles someone actually made.
+  const builtIn = (attr(el, 'Name') ?? '').startsWith('$ID/');
+  for (let i = 0; builtIn ? false : i < el.attributes.length; i++) {
     const a = el.attributes.item(i)!;
     if (
       ![
@@ -86,7 +89,12 @@ export function styleInfo(el: Element, group?: string): StyleInfo {
     self: attr(el, 'Self') ?? '',
     name: displayStyleName(name),
     group,
-    basedOn: getProperty(el, 'BasedOn')?.value,
+    // BasedOn holds a reference ("ParagraphStyle/Heading 1") or a built-in's $ID name; report the
+    // name a person would recognise either way.
+    basedOn: (() => {
+      const value = getProperty(el, 'BasedOn')?.value;
+      return value === undefined ? undefined : displayStyleName(value);
+    })(),
     builtIn: name.startsWith('$ID/'),
     font: getProperty(el, 'AppliedFont')?.value,
     fontStyle: attr(el, 'FontStyle'),
@@ -197,6 +205,39 @@ export interface CharacterStyleSpec extends TextStyleSpec {
   group?: string;
 }
 
+/**
+ * Makes sure Fonts.xml declares a family (and the styles asked of it).
+ *
+ * InDesign renders a font a document never declares, but everything that reads the file rather
+ * than laying it out — packaging, preflight, a font report — works from Fonts.xml, so a document
+ * that used Helvetica Neue everywhere still looked like it only used Minion Pro.
+ */
+export function ensureFontFamily(doc: IdmlDocument, family: string, style = 'Regular'): void {
+  const name = family.trim();
+  if (!name || name.startsWith('$ID/')) return;
+  const fonts = doc.resource('Fonts');
+  let fam = children(fonts, 'FontFamily').find(
+    (f) => (attr(f, 'Name') ?? '').toLowerCase() === name.toLowerCase(),
+  );
+  if (!fam) {
+    fam = fragment(fonts.ownerDocument!, `<FontFamily Self="${doc.newId()}" Name="${escapeAttr(name)}"/>`);
+    fonts.appendChild(fam);
+  }
+  const wanted = style.trim() || 'Regular';
+  const has = children(fam, 'Font').some(
+    (f) => (attr(f, 'FontStyleName') ?? '').toLowerCase() === wanted.toLowerCase(),
+  );
+  if (has) return;
+  const full = `${name} ${wanted}`;
+  const postScript = `${name.replace(/\s+/g, '')}-${wanted.replace(/\s+/g, '')}`;
+  fam.appendChild(
+    fragment(
+      fonts.ownerDocument!,
+      `<Font Self="${escapeAttr(`${attr(fam, 'Self')}Fontn${full}`)}" FontFamily="${escapeAttr(name)}" Name="${escapeAttr(full)}" PostScriptName="${escapeAttr(postScript)}" Status="Installed" FontStyleName="${escapeAttr(wanted)}" FontType="Unknown" WritingScript="0" FullName="${escapeAttr(full)}" FullNameNative="${escapeAttr(full)}" FontStyleNameNative="${escapeAttr(wanted)}" PlatformName="$ID/" Version="$ID/" TypekitID="$ID/"/>`,
+    ),
+  );
+}
+
 /** Translates a TextStyleSpec into IDML attributes + typed properties. */
 export function textStyleAttrs(
   doc: IdmlDocument,
@@ -207,7 +248,10 @@ export function textStyleAttrs(
 } {
   const attrs: Record<string, string | number | boolean | null> = {};
   const props: Record<string, { type: string; value: string | number } | null> = {};
-  if (spec.font !== undefined) props.AppliedFont = { type: 'string', value: spec.font };
+  if (spec.font !== undefined) {
+    props.AppliedFont = { type: 'string', value: spec.font };
+    ensureFontFamily(doc, spec.font, spec.fontStyle ?? 'Regular');
+  }
   if (spec.fontStyle !== undefined) attrs.FontStyle = spec.fontStyle;
   if (spec.size !== undefined) attrs.PointSize = spec.size;
   if (spec.leading !== undefined)
@@ -275,6 +319,25 @@ function newStyleSelf(kind: StyleKind, group: string | undefined, name: string):
   return `${kind}/${path}`;
 }
 
+/**
+ * How a style records its parent. InDesign writes a built-in parent as its `$ID/` name and a
+ * style of the document's own as an object reference; the bare display name it writes for neither
+ * is silently unresolvable, and the child then inherits nothing.
+ */
+function basedOnProperty(parent: Element | undefined, fallback: string): string {
+  if (!parent) return `<BasedOn type="string">${escapeAttr(fallback)}</BasedOn>`;
+  const name = attr(parent, 'Name') ?? '';
+  if (name.startsWith('$ID/')) return `<BasedOn type="string">${escapeAttr(name)}</BasedOn>`;
+  return `<BasedOn type="object">${escapeAttr(attr(parent, 'Self') ?? name)}</BasedOn>`;
+}
+
+/** Sets BasedOn on an existing style, the same way. */
+function setBasedOn(el: Element, parent: Element): void {
+  const name = attr(parent, 'Name') ?? '';
+  if (name.startsWith('$ID/')) setProperty(el, 'BasedOn', 'string', name);
+  else setProperty(el, 'BasedOn', 'object', attr(parent, 'Self') ?? name);
+}
+
 export function createParagraphStyle(doc: IdmlDocument, spec: ParagraphStyleSpec): StyleInfo {
   if (
     styleElements(doc, 'ParagraphStyle').some(
@@ -289,7 +352,7 @@ export function createParagraphStyle(doc: IdmlDocument, spec: ParagraphStyleSpec
   const next = spec.nextStyle ? styleSelf(doc, 'ParagraphStyle', spec.nextStyle) : self;
   const el = fragment(
     container.ownerDocument!,
-    `<ParagraphStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" NextStyle="${escapeAttr(next)}" SplitDocument="false" EmitCss="true" IncludeClass="true" EmptyNestedStyles="true" EmptyLineStyles="true" EmptyGrepStyles="true" KeyboardShortcut="0 0"><Properties><BasedOn type="string">${escapeAttr(basedOn ? attr(basedOn, 'Name')! : '$ID/[No paragraph style]')}</BasedOn><PreviewColor type="enumeration">Nothing</PreviewColor></Properties></ParagraphStyle>`,
+    `<ParagraphStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" NextStyle="${escapeAttr(next)}" SplitDocument="false" EmitCss="true" IncludeClass="true" EmptyNestedStyles="true" EmptyLineStyles="true" EmptyGrepStyles="true" KeyboardShortcut="0 0"><Properties>${basedOnProperty(basedOn, '$ID/[No paragraph style]')}<PreviewColor type="enumeration">Nothing</PreviewColor></Properties></ParagraphStyle>`,
   );
   applyStyleSpec(doc, el, spec);
   insertAfter(container, el, children(container, 'ParagraphStyle').at(-1));
@@ -309,7 +372,7 @@ export function createCharacterStyle(doc: IdmlDocument, spec: CharacterStyleSpec
   const basedOn = spec.basedOn ? resolveStyle(doc, 'CharacterStyle', spec.basedOn) : undefined;
   const el = fragment(
     container.ownerDocument!,
-    `<CharacterStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" SplitDocument="false" EmitCss="true" IncludeClass="true" KeyboardShortcut="0 0"><Properties><BasedOn type="string">${escapeAttr(basedOn ? attr(basedOn, 'Name')! : '$ID/[No character style]')}</BasedOn><PreviewColor type="enumeration">Nothing</PreviewColor></Properties></CharacterStyle>`,
+    `<CharacterStyle Self="${escapeAttr(self)}" Name="${escapeAttr(spec.name)}" Imported="false" SplitDocument="false" EmitCss="true" IncludeClass="true" KeyboardShortcut="0 0"><Properties>${basedOnProperty(basedOn, '$ID/[No character style]')}<PreviewColor type="enumeration">Nothing</PreviewColor></Properties></CharacterStyle>`,
   );
   applyStyleSpec(doc, el, spec);
   insertAfter(container, el, children(container, 'CharacterStyle').at(-1));
@@ -329,8 +392,7 @@ export function applyStyleSpec(
   });
   for (const [k, v] of Object.entries(props)) setProperty(el, k, v?.type ?? 'string', v ? v.value : null);
   if (spec.basedOn && el.tagName !== 'ObjectStyle') {
-    const based = resolveStyle(doc, el.tagName as StyleKind, spec.basedOn);
-    setProperty(el, 'BasedOn', 'string', attr(based, 'Name')!);
+    setBasedOn(el, resolveStyle(doc, el.tagName as StyleKind, spec.basedOn));
   }
   if (spec.nextStyle && el.tagName === 'ParagraphStyle')
     el.setAttribute('NextStyle', styleSelf(doc, 'ParagraphStyle', spec.nextStyle));
@@ -811,7 +873,11 @@ export function createObjectStyle(doc: IdmlDocument, spec: ObjectStyleSpec): Sty
     insertAfter(styles, root);
   }
   const self = `ObjectStyle/${encodeStyleName(spec.name)}`;
-  const basedOn = spec.basedOn ? attr(resolveStyle(doc, 'ObjectStyle', spec.basedOn), 'Name')! : '$ID/[None]';
+  // An object style's parent is a reference, like every other object-typed property; the display
+  // name InDesign cannot resolve, and the child then inherits nothing.
+  const basedOn = spec.basedOn
+    ? (attr(resolveStyle(doc, 'ObjectStyle', spec.basedOn), 'Self') ?? '$ID/[None]')
+    : '$ID/[None]';
   const enable = [
     spec.fill !== undefined ? 'EnableFill="true"' : 'EnableFill="false"',
     spec.stroke !== undefined || spec.strokeWeight !== undefined
@@ -863,6 +929,38 @@ export function applyObjectStyle(doc: IdmlDocument, item: Element, ref: string):
   const style = resolveStyle(doc, 'ObjectStyle', ref);
   const self = attr(style, 'Self')!;
   item.setAttribute('AppliedObjectStyle', self);
+  // A style based on another carries only its own differences, so the chain is applied parent
+  // first: without it a style based on a panel loses the panel's inset and paragraph style.
+  for (const parent of objectStyleChain(doc, style)) applyObjectStyleLevel(doc, item, parent);
+  applyObjectStyleLevel(doc, item, style);
+  return self;
+}
+
+/** The styles a given object style is based on, oldest ancestor first. */
+function objectStyleChain(doc: IdmlDocument, style: Element): Element[] {
+  const chain: Element[] = [];
+  const seen = new Set<string>([attr(style, 'Self') ?? '']);
+  let current = style;
+  for (;;) {
+    const ref = getProperty(current, 'BasedOn')?.value;
+    if (!ref || ref.startsWith('$ID/')) break;
+    let parent: Element;
+    try {
+      parent = resolveStyle(doc, 'ObjectStyle', ref);
+    } catch {
+      break;
+    }
+    const id = attr(parent, 'Self') ?? '';
+    if (seen.has(id)) break;
+    seen.add(id);
+    chain.unshift(parent);
+    current = parent;
+  }
+  return chain;
+}
+
+/** Copies one object style's own settings onto an item. */
+function applyObjectStyleLevel(doc: IdmlDocument, item: Element, style: Element): void {
   const COPY = [
     'FillColor',
     'FillTint',
@@ -906,7 +1004,6 @@ export function applyObjectStyle(doc: IdmlDocument, item: Element, ref: string):
         psr.setAttribute('AppliedParagraphStyle', para);
       }
   }
-  return self;
 }
 
 // ---- gradients ----------------------------------------------------------------------------------
@@ -935,7 +1032,23 @@ export function createGradient(doc: IdmlDocument, spec: GradientSpec): SwatchInf
     graphic.ownerDocument!,
     `<Gradient Self="${escapeAttr(self)}" Type="${spec.type === 'radial' ? 'Radial' : 'Linear'}" Name="${escapeAttr(spec.name)}" ColorEditable="true" ColorRemovable="true" Visible="true" SwatchCreatorID="7937">${stops.join('')}</Gradient>`,
   );
-  insertAfter(graphic, el, children(graphic, 'Gradient').at(-1) ?? children(graphic, 'Color').at(-1));
+  // Graphic.xml has a fixed order — colours, inks, mixed inks, tints, swatches, then gradients —
+  // and a gradient dropped in after the colours puts everything after it out of order.
+  const BEFORE_GRADIENT = [
+    'Color',
+    'Ink',
+    'MixedInkGroup',
+    'MixedInk',
+    'PastedSmoothShade',
+    'Tint',
+    'Swatch',
+  ];
+  const previous =
+    children(graphic, 'Gradient').at(-1) ??
+    children(graphic)
+      .filter((c) => BEFORE_GRADIENT.includes(c.tagName))
+      .at(-1);
+  insertAfter(graphic, el, previous);
   return swatchInfo(el);
 }
 

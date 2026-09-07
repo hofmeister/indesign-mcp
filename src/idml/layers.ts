@@ -66,8 +66,9 @@ export function layerInfo(el: Element): LayerInfo {
   };
 }
 
+/** Layers of the document, top-most first — the order InDesign's Layers panel shows. */
 export function listLayers(doc: IdmlDocument): LayerInfo[] {
-  return layerElements(doc).map(layerInfo);
+  return layerElements(doc).map(layerInfo).reverse();
 }
 
 /** Finds a layer by id or (case-insensitive) name. */
@@ -108,12 +109,13 @@ export function createLayer(
     doc.designmap,
     `<Layer Self="${id}" Name="${escapeAttr(name)}" Visible="${options.visible === false ? 'false' : 'true'}" Locked="${options.locked ? 'true' : 'false'}" IgnoreWrap="false" ShowGuides="true" LockGuides="false" UI="true" Expendable="true" Printable="true"><Properties><LayerColor type="enumeration">${color}</LayerColor></Properties></Layer>`,
   );
-  // Layers are listed top-most first in designmap. New layers go on top unless `above` says otherwise.
+  // Designmap lists layers bottom-most first — InDesign's layer panel shows the last one on top —
+  // so a new layer is appended after the others, as clicking "New Layer" does.
   const ref = options.above ? findLayer(doc, options.above) : undefined;
   if (ref) {
-    doc.root.insertBefore(el, ref);
+    insertAfter(doc.root, el, ref);
   } else if (existing.length) {
-    doc.root.insertBefore(el, existing[0]!);
+    insertAfter(doc.root, el, existing.at(-1)!);
   } else {
     insertAfter(
       doc.root,
@@ -171,7 +173,10 @@ export function deleteLayer(
   return { moved, deleted };
 }
 
-/** Moves a layer in the stacking order. Position 1 is the top-most layer. */
+/**
+ * Moves a layer in the stacking order. Position 1 is the top-most layer, as in InDesign's panel —
+ * designmap stores them the other way round, bottom-most first.
+ */
 export function reorderLayer(
   doc: import('./document.ts').IdmlDocument,
   ref: string,
@@ -181,11 +186,12 @@ export function reorderLayer(
   const el = findLayer(doc, ref);
   if (!el) throw new Error(`Layer "${ref}" not found`);
   const others = layers.filter((l) => l !== el);
-  const index = Math.max(0, Math.min(others.length, Math.floor(position) - 1));
+  const fromTop = Math.max(0, Math.min(others.length, Math.floor(position) - 1));
+  const index = others.length - fromTop; // how many layers stay below it
   el.parentNode?.removeChild(el);
   const before = others[index];
   if (before) doc.root.insertBefore(el, before);
-  else if (others.length) doc.root.insertBefore(el, others[others.length - 1]!.nextSibling);
+  else if (others.length) insertAfter(doc.root, el, others.at(-1)!);
   else doc.root.appendChild(el);
   return listLayers(doc);
 }

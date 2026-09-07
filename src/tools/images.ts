@@ -9,13 +9,14 @@ import { formatLength } from '../idml/units.ts';
 import { mimeFor, probeImage, saveImage, slugify } from '../images/files.ts';
 import { type GeneratedImage, type ImageProvider, pickSize } from '../images/provider.ts';
 import { thumbnailBase64 } from '../images/thumbnail.ts';
-import { checkPlacement, withNotes } from './checks.ts';
+import { checkPlacement, masterSideNotes, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import type { ToolRegistry } from './registry.ts';
 import {
   documentParam,
   itemParam,
   lengthParam,
+  masterPageParam,
   ok,
   pageParam,
   run,
@@ -33,6 +34,7 @@ const fitParam = z
 const targetParams = {
   page: pageParam.optional().describe('Page for a new frame (default 1).'),
   master: z.string().optional().describe('Place on this master page instead.'),
+  masterPage: masterPageParam,
 };
 
 const frameParams = {
@@ -89,6 +91,7 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
       frame?: string;
       page?: number | string;
       master?: string;
+      masterPage?: number | 'left' | 'right';
       x?: string | number;
       y?: string | number;
       width?: string | number;
@@ -112,9 +115,14 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
     const probe = probeImage(image);
     const w = ctx.pt(args.width);
     const h = args.height !== undefined ? ctx.pt(args.height) : (w * probe.height) / probe.width;
-    const target = args.master ? { master: args.master } : { page: args.page ?? 1 };
+    const target = args.master
+      ? { master: args.master, masterPage: args.masterPage }
+      : { page: args.page ?? 1 };
     const rect = { x: ctx.pt(args.x), y: ctx.pt(args.y), width: w, height: h };
-    const notes = checkPlacement(ctx, doc, rect, args, 'picture frame');
+    const notes = [
+      ...checkPlacement(ctx, doc, rect, args, 'picture frame'),
+      ...masterSideNotes(doc, args, 'picture frame', rect),
+    ];
     const { frame, info } = placeImage(
       doc,
       target,
