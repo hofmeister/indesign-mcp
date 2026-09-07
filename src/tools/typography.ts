@@ -46,7 +46,6 @@ function storyOf(doc: IdmlDocument, item: string, page?: number | string): Eleme
  * caller named none, and says so either way.
  */
 function bulletFontFor(
-  doc: IdmlDocument,
   style: Element,
   character: string,
   requested: string | undefined,
@@ -122,7 +121,7 @@ export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): vo
         const style = resolveStyle(doc, 'ParagraphStyle', args.style);
         const bullet =
           args.kind === 'bullet'
-            ? bulletFontFor(doc, style, args.bulletCharacter ?? '•', args.font)
+            ? bulletFontFor(style, args.bulletCharacter ?? '•', args.font)
             : { font: args.font, notes: [] as string[] };
         applyListSettings(doc, style, {
           kind: args.kind,

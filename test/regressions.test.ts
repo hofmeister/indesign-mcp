@@ -819,7 +819,13 @@ describe('second round of real-document testing', () => {
     const client = await connectedClient();
     const document = docPath('bulletfont');
     await call(client, 'new_document', { path: document, pageSize: 'A4' });
-    await call(client, 'create_paragraph_style', { document, name: 'B', font: 'Liberation Sans', size: 10 });
+    // A family no computer has: it falls back to a bundled face, which carries no symbols.
+    await call(client, 'create_paragraph_style', {
+      document,
+      name: 'B',
+      font: 'Nonexistent Grotesk',
+      size: 10,
+    });
     const r = await call(client, 'set_list_options', {
       document,
       style: 'B',

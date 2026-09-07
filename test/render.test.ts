@@ -329,7 +329,9 @@ describe('the sample documents still render', () => {
 describe('missing glyphs', () => {
   test('a character the font lacks is drawn from a font that has it', () => {
     const doc = createDocument({ pageSize: 'A5', pages: 1 });
-    createParagraphStyle(doc, { name: 'Body', font: 'Liberation Sans', size: 10 });
+    // A family no computer has: it falls back to a bundled face, which carries no symbols, so the
+    // character is missing whatever fonts this machine happens to have installed.
+    createParagraphStyle(doc, { name: 'Body', font: 'Nonexistent Grotesk', size: 10 });
     createTextFrame(
       doc,
       { page: 1 },
@@ -339,11 +341,11 @@ describe('missing glyphs', () => {
         paragraphs: [{ text: 'a \u25aa b', style: 'ParagraphStyle/Body' }],
       },
     );
-    // Only meaningful where some installed font actually has the character.
-    const hasIt = fontCatalog().faceWithGlyph(0x25aa) !== undefined;
+    // The fallback can only happen where some installed font actually has the character.
+    const available = fontCatalog().faceWithGlyph(0x25aa) !== undefined;
     const r = renderPageSvg(doc, 1);
     // "a ▪ b" is five glyphs; without the per-character fallback the ▪ silently disappeared.
-    expect((r.svg.match(/<use /g) ?? []).length).toBe(hasIt ? 5 : 4);
-    if (hasIt) expect(Object.keys(r.substitutions).some((k) => k.startsWith('\u25aa in '))).toBe(true);
+    expect((r.svg.match(/<use /g) ?? []).length).toBe(available ? 5 : 4);
+    expect(Object.keys(r.substitutions).some((k) => k.startsWith('\u25aa in '))).toBe(available);
   });
 });
