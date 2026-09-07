@@ -96,6 +96,8 @@ function italicFromStyle(style: string): boolean {
 export class FontCatalog {
   private faces: FaceInfo[] = [];
   private loaded = new Map<string, FontFace>();
+  /** Faces found to carry a given code point (null = none of the installed fonts has it). */
+  private glyphFaces = new Map<number, FontMatch | null>();
   private scanned = false;
   readonly substitutions = new Map<string, string>();
 
@@ -243,6 +245,50 @@ export class FontCatalog {
       }
     }
     throw new Error('No usable fonts were found for previews');
+  }
+
+  /**
+   * A face that actually has a glyph for `codePoint`, for characters the chosen font does not
+   * cover (▪, ✓, arrows). Fonts likely to carry symbols are tried first; the answer is cached
+   * because the search may have to open a lot of files.
+   */
+  faceWithGlyph(codePoint: number): FontMatch | undefined {
+    this.scan();
+    const cached = this.glyphFaces.get(codePoint);
+    if (cached !== undefined) return cached ?? undefined;
+    const preferred = [
+      'Arial Unicode MS',
+      'Apple Symbols',
+      'Segoe UI Symbol',
+      'Symbola',
+      'DejaVu Sans',
+      'Noto Sans Symbols 2',
+      'Lucida Grande',
+      'Menlo',
+      'Geneva',
+      'Arimo',
+      'Tinos',
+    ];
+    const rank = (f: FaceInfo) => {
+      const i = preferred.findIndex((name) => f.family.toLowerCase() === name.toLowerCase());
+      return i < 0 ? preferred.length : i;
+    };
+    const ordered = [...this.faces]
+      .filter((f) => !f.italic && f.weight <= 500)
+      .sort((a, b) => rank(a) - rank(b));
+    for (const info of ordered.slice(0, 400)) {
+      try {
+        const face = this.load(info);
+        if (!face.hasGlyphForCodePoint?.(codePoint)) continue;
+        const match: FontMatch = { face, info, substituted: true };
+        this.glyphFaces.set(codePoint, match);
+        return match;
+      } catch {
+        this.forget(info);
+      }
+    }
+    this.glyphFaces.set(codePoint, null);
+    return undefined;
   }
 
   /** Raw bytes of every face used so far (for renderers that need font files). */

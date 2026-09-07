@@ -26,6 +26,8 @@ export interface Run {
   anchored?: Element;
   /** A marker InDesign resolves when it lays the text out (the automatic page number). */
   marker?: 'page-number' | 'section-marker';
+  /** Name of the text variable this run stands for; its text is the variable's current result. */
+  variable?: string;
 }
 
 export interface Paragraph {
@@ -119,7 +121,13 @@ export function readStory(story: Element): Paragraph[] {
             ensure();
             current = null;
           } else if (c.tagName === 'TextVariableInstance') {
-            push(attr(c, 'ResultText') ?? '');
+            ensure().runs.push({
+              text: attr(c, 'ResultText') ?? '',
+              characterStyle,
+              attrs,
+              props,
+              variable: attr(c, 'Name') ?? '',
+            });
           } else if (ANCHORED_TAGS.includes(c.tagName)) {
             ensure().runs.push({ text: '', characterStyle, attrs, props, anchored: c });
           } else if (INLINE_WRAPPERS.includes(c.tagName)) walkRange(c);
@@ -179,9 +187,13 @@ function sameProps(
   return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
 }
 
-export function readStoryPlainText(story: Element): string {
+export function readStoryPlainText(story: Element, options: { namedVariables?: boolean } = {}): string {
+  // A variable whose result is empty (a running head, say) would otherwise make the frame look
+  // empty in a listing; showing <its name> says what is really in there.
+  const textOf = (run: Run): string =>
+    options.namedVariables && run.variable && !run.text ? `<${run.variable}>` : run.text;
   return readStory(story)
-    .map((p) => p.runs.map((r) => r.text).join(''))
+    .map((p) => p.runs.map(textOf).join(''))
     .join('\n');
 }
 
@@ -486,9 +498,13 @@ function splitRange(
 /** Inserts an auto page number marker (the <?ACE 18?> processing instruction) as a new paragraph run. */
 export function appendPageNumberMarker(
   story: Element,
-  options: { prefix?: string; suffix?: string; paragraphStyle?: string } = {},
+  options: { prefix?: string; suffix?: string; paragraphStyle?: string; find?: string } = {},
 ): void {
   const xml = ownerDoc(story);
+  if (options.find) {
+    replaceTextWithPageNumberMarker(story, options.find, options);
+    return;
+  }
   const psrs = children(story, 'ParagraphStyleRange');
   let psr = psrs.at(-1);
   if (!psr) {
@@ -514,6 +530,31 @@ export function appendPageNumberMarker(
   if (options.suffix) content.appendChild(xml.createTextNode(options.suffix));
   csr.appendChild(content);
   psr.appendChild(csr);
+}
+
+/** Puts the marker (with its prefix and suffix) where `find` sits in the story's text. */
+function replaceTextWithPageNumberMarker(
+  story: Element,
+  find: string,
+  options: { prefix?: string; suffix?: string },
+): void {
+  const xml = ownerDoc(story);
+  for (const content of Array.from(story.getElementsByTagName('Content')) as Element[]) {
+    for (let node = content.firstChild; node; node = node.nextSibling) {
+      if (node.nodeType !== 3) continue;
+      const text = node.nodeValue ?? '';
+      const at = text.indexOf(find);
+      if (at < 0) continue;
+      const after = text.slice(at + find.length);
+      node.nodeValue = text.slice(0, at) + (options.prefix ?? '');
+      const marker = xml.createProcessingInstruction('ACE', '18');
+      content.insertBefore(marker, node.nextSibling);
+      const tail = (options.suffix ?? '') + after;
+      if (tail) content.insertBefore(xml.createTextNode(tail), marker.nextSibling);
+      return;
+    }
+  }
+  throw new Error(`"${find}" was not found in that text`);
 }
 
 export function storyHasPageNumberMarker(story: Element): boolean {

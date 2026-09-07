@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { findItem } from '../idml/items.ts';
 import { listPages } from '../idml/pages.ts';
+import { inlineImage } from '../images/thumbnail.ts';
 import { detectInDesign } from '../preview/indesign.ts';
 import {
   type PreviewOptions,
@@ -15,7 +16,15 @@ import type { ToolRegistry } from './registry.ts';
 import { documentParam, itemParam, pageParam, run, type ToolResult, toolInput } from './shared.ts';
 
 const previewParams = {
-  width: z.number().int().min(200).max(4000).optional().describe('Image width in pixels (default 1200).'),
+  width: z
+    .number()
+    .int()
+    .min(200)
+    .max(4000)
+    .optional()
+    .describe(
+      'Width in pixels of the PNG saved next to the document (default 1200). The picture shown in the reply is capped at about 1400 px whatever this says, so raise it for a file to look at, not for a closer look here — use preview item for that.',
+    ),
   renderer: z
     .enum(['auto', 'builtin', 'indesign'])
     .optional()
@@ -46,17 +55,23 @@ function describeResult(r: PreviewResult, what: string): string {
 }
 
 function imageResult(r: PreviewResult, text: string, structured: Record<string, unknown>): ToolResult {
-  const result: ToolResult = {
+  // The render can be far larger than a tool result may carry, so what travels back is capped.
+  // r.savedTo still points at the PNG at the full requested width.
+  const small = inlineImage(r.png, 'image/png');
+  const note = small?.reduced
+    ? `\n(Shown here at ${small.width}×${small.height} px to keep the reply small${r.savedTo ? '; the saved PNG has the full resolution' : ''}.)`
+    : '';
+  const image = small ?? { data: Buffer.from(r.png).toString('base64'), mimeType: 'image/png' };
+  return {
     content: [
-      { type: 'text', text },
-      { type: 'image', data: Buffer.from(r.png).toString('base64'), mimeType: 'image/png' } as unknown as {
+      { type: 'text', text: text + note },
+      { type: 'image', data: image.data, mimeType: image.mimeType } as unknown as {
         type: 'text';
         text: string;
       },
     ],
     structuredContent: structured,
   };
-  return result;
 }
 
 export function registerPreviewTools(reg: ToolRegistry, ctx: ToolContext): void {

@@ -9,6 +9,7 @@ import { createDocument } from '../src/idml/template.ts';
 import { anchorItem, applyListSettings, setTabStops } from '../src/idml/typography.ts';
 import { firstChild, propertiesOf, setAttrs } from '../src/idml/xml.ts';
 import { decodeRaster } from '../src/images/thumbnail.ts';
+import { fontCatalog } from '../src/preview/fonts.ts';
 import { svgToPng } from '../src/preview/png.ts';
 import { renderPageSvg } from '../src/preview/svg.ts';
 import { formatListNumber } from '../src/preview/textLayout.ts';
@@ -322,5 +323,27 @@ describe('the sample documents still render', () => {
     const { png } = await svgToPng(svg.svg, { width: 300 });
     expect(png.length).toBeGreaterThan(100);
     expect(FIXTURES).toBeTruthy();
+  });
+});
+
+describe('missing glyphs', () => {
+  test('a character the font lacks is drawn from a font that has it', () => {
+    const doc = createDocument({ pageSize: 'A5', pages: 1 });
+    createParagraphStyle(doc, { name: 'Body', font: 'Liberation Sans', size: 10 });
+    createTextFrame(
+      doc,
+      { page: 1 },
+      {
+        rect: { x: 20, y: 20, width: 200, height: 40 },
+        name: 'Glyphs',
+        paragraphs: [{ text: 'a \u25aa b', style: 'ParagraphStyle/Body' }],
+      },
+    );
+    // Only meaningful where some installed font actually has the character.
+    const hasIt = fontCatalog().faceWithGlyph(0x25aa) !== undefined;
+    const r = renderPageSvg(doc, 1);
+    // "a ▪ b" is five glyphs; without the per-character fallback the ▪ silently disappeared.
+    expect((r.svg.match(/<use /g) ?? []).length).toBe(hasIt ? 5 : 4);
+    if (hasIt) expect(Object.keys(r.substitutions).some((k) => k.startsWith('\u25aa in '))).toBe(true);
   });
 });

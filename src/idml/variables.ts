@@ -11,6 +11,7 @@ import {
   type Element,
   firstChild,
   fragment,
+  type Node,
   ownerDoc,
   propertiesOf,
   removeElement,
@@ -241,6 +242,18 @@ export interface InsertVariableOptions {
 }
 
 /** Puts a variable into a story, either in place of some text or at the end. */
+/** The text node inside a story's <Content> that holds `find`, and where in it the match starts. */
+function findInStory(story: Element, find: string): { content: Element; node: Node; at: number } | undefined {
+  for (const content of Array.from(story.getElementsByTagName('Content')) as Element[]) {
+    for (let node = content.firstChild; node; node = node.nextSibling) {
+      if (node.nodeType !== 3) continue;
+      const at = (node.nodeValue ?? '').indexOf(find);
+      if (at >= 0) return { content, node, at };
+    }
+  }
+  return undefined;
+}
+
 export function insertTextVariable(
   doc: IdmlDocument,
   story: Element,
@@ -254,25 +267,24 @@ export function insertTextVariable(
     `<TextVariableInstance Self="${doc.newId()}" Name="${escapeAttr(attr(variable, 'Name') ?? name)}" ResultText="${escapeAttr(resultTextFor(doc, variable))}" AssociatedTextVariable="${escapeAttr(attr(variable, 'Self') ?? '')}"/>`,
   );
   if (options.find) {
-    const content = (Array.from(story.getElementsByTagName('Content')) as Element[]).find((c) =>
-      (c.textContent ?? '').includes(options.find!),
-    );
-    if (!content) throw new Error(`"${options.find}" was not found in that text`);
-    const text = content.textContent ?? '';
-    const at = text.indexOf(options.find);
+    // Split the text around the match without touching the rest of the <Content>: it can hold an
+    // automatic page-number marker, and rebuilding the element from its text alone would drop it.
+    const found = findInStory(story, options.find);
+    if (!found) throw new Error(`"${options.find}" was not found in that text`);
+    const { content, node, at } = found;
+    const text = node.nodeValue ?? '';
     const csr = content.parentNode as Element;
-    const before = text.slice(0, at);
+    const tail = xml.createElement('Content');
     const after = text.slice(at + options.find.length);
-    while (content.firstChild) content.removeChild(content.firstChild);
-    if (before) content.appendChild(xml.createTextNode(before));
-    else csr.removeChild(content);
-    const reference = before ? content.nextSibling : csr.firstChild;
-    csr.insertBefore(instance, reference);
-    if (after) {
-      const tail = xml.createElement('Content');
-      tail.appendChild(xml.createTextNode(after));
-      csr.insertBefore(tail, instance.nextSibling);
-    }
+    // Everything after the match — the rest of this text node and every later child — moves to a
+    // second <Content> on the far side of the variable.
+    while (node.nextSibling) tail.appendChild(node.nextSibling);
+    if (after) tail.insertBefore(xml.createTextNode(after), tail.firstChild);
+    node.nodeValue = text.slice(0, at);
+    if (!node.nodeValue && !content.firstChild?.nextSibling) content.removeChild(node);
+    csr.insertBefore(instance, content.nextSibling);
+    if (tail.firstChild) csr.insertBefore(tail, instance.nextSibling);
+    if (!content.firstChild) csr.removeChild(content);
     return instance;
   }
   let psr = children(story, 'ParagraphStyleRange').at(-1);

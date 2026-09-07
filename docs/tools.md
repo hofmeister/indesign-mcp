@@ -18,7 +18,7 @@ Lists one part of a document: pages, masters, layers, items, styles, swatches, f
 
 ### `batch`
 
-Runs a list of edits in order, as if each tool had been called on its own. Use it whenever you know several steps up front — laying out a page, filling a table, styling a set of frames — instead of one call per edit. The document is written once at the end rather than after every step. Each step reports its own result; by default the first failure stops the batch and the document keeps the edits made before it.
+Runs a list of edits in order, as if each tool had been called on its own. Use it whenever you know several steps up front — laying out a page, filling a table, styling a set of frames — instead of one call per edit. The document is written once at the end rather than after every step. Each step reports its own result; by default the first failure stops the batch and the document keeps the edits made before it. Unknown tools and bad arguments are caught before anything runs, so the batch either starts clean or makes no edits at all. Read-only steps (list, describe_document, preflight_document, validate_document) may be mixed in; their output is included in the report.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -129,7 +129,7 @@ Sets page margins and column guides for all pages, or for specific pages.
 
 ### `apply_master`
 
-Applies a master page (or "none") to the given pages.
+Applies a master page (or "none") to the given pages, so they inherit its running heads, footers, folios and grid. Pages created by new_document already carry the first master.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -139,7 +139,7 @@ Applies a master page (or "none") to the given pages.
 
 ### `create_master`
 
-Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Add items to it with add_text_frame etc. using target master.
+Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Use a master for everything that repeats across pages — running heads, footers, folios, background rules, the text-frame grid — then apply_master to the pages that should use it. Add items to it with add_text_frame / add_shape using target master rather than page.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -191,7 +191,7 @@ Changes which pages the document has and what order they are in: add, remove, mo
 
 ### `edit_layers`
 
-Creates and changes layers: create, options, delete, reorder, active. To move an item between layers use edit_item with op "layer".
+Creates and changes layers: create, options, delete, reorder, active. Give every document a few named layers early ("Background", "Images", "Text") and pass layer: when you add items, so the file stays editable. To move an item between layers use edit_item with op "layer".
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -216,7 +216,7 @@ Adds a text frame with text to a page. Positions are measured from the top-left 
 |---|---|---|
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
-| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page. |
 | `x` * | number,string | Distance from the left edge of the page. |
 | `y` * | number,string | Distance from the top edge of the page. |
 | `width` * | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
@@ -230,9 +230,9 @@ Adds a text frame with text to a page. Positions are measured from the top-left 
 | `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
 | `autoSize` | `off` \| `height` \| `width` \| `both` | Auto-size the frame to its text. |
 | `name` | string | A name to refer to the item later, e.g. "Headline". |
-| `layer` | string | Layer name (default: the active layer). |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
-| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `layer` | string | Layer to put the item on, e.g. "Text", "Images", "Background" (default: the active layer). Create layers with edit_layers op "create" and name one on every item — a document with everything on one layer is hard to edit later. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `strokeWeight` | number | Stroke weight in points. |
 | `rotation` | number | Rotation in degrees (counter-clockwise). |
 
@@ -245,7 +245,7 @@ Adds a rectangle, ellipse, line, polygon/star or free path. Rectangles, ellipses
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `shape` * | `rectangle` \| `ellipse` \| `line` \| `polygon` \| `path` | Which shape to draw. |
 | `page` | integer \| string | Page to place the item on (default 1). Ignored when master is given. |
-| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". |
+| `master` | string | Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page. |
 | `x` | number,string | Box left edge. Rectangle, ellipse and polygon. |
 | `y` | number,string | Box top edge. Rectangle, ellipse and polygon. |
 | `width` | number,string | Box width. Rectangle, ellipse and polygon. |
@@ -262,9 +262,9 @@ Adds a rectangle, ellipse, line, polygon/star or free path. Rectangles, ellipses
 | `cornerRadius` | number,string | Rectangle only: rounded corners. |
 | `strokeType` | string | Line only: solid, dashed, dotted, thick-thin, thin-thick, wavy. |
 | `name` | string | A name to refer to the item later, e.g. "Headline". |
-| `layer` | string | Layer name (default: the active layer). |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
-| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `layer` | string | Layer to put the item on, e.g. "Text", "Images", "Background" (default: the active layer). Create layers with edit_layers op "create" and name one on every item — a document with everything on one layer is hard to edit later. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `strokeWeight` | number | Stroke weight in points. |
 | `rotation` | number | Rotation in degrees (counter-clockwise). |
 
@@ -277,9 +277,9 @@ Changes fill color, stroke (color, weight, type), corner radius and opacity of a
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `item` * | string | The item's name or id (see describe_document / list items). |
 | `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `fillTint` | number |  |
-| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `strokeWeight` | number |  |
 | `strokeType` | string |  |
 | `strokeAlignment` | `center` \| `inside` \| `outside` |  |
@@ -464,14 +464,14 @@ Formats every occurrence of some text inside a frame (or the whole document): ap
 | `fontStyle` | string | Exact font style name, e.g. "Semibold Italic" (overrides bold/italic). |
 | `font` | string |  |
 | `size` | number |  |
-| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `tracking` | number |  |
 | `underline` | boolean |  |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` |  |
 
 ### `insert_page_number`
 
-Adds an automatic page-number marker to a text frame, typically a small frame on a master page (create it with add_text_frame using master).
+Adds an automatic page-number marker to a text frame, so each page shows its own number — at the end of the text, or in place of text you name with replaceText. It belongs in a small frame on a master page — add that frame with add_text_frame using master, not one per page.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -480,6 +480,7 @@ Adds an automatic page-number marker to a text frame, typically a small frame on
 | `page` | integer \| string | Page number (1 = first page) or the page name shown in InDesign. |
 | `prefix` | string |  |
 | `suffix` | string |  |
+| `replaceText` | string | Text to replace with the marker. Without it the marker is added at the end. |
 | `paragraphStyle` | string | Paragraph style for the marker. Only needed for an empty frame: in a frame that already has text the marker matches the text it is added to. |
 
 ### `thread_text_frames`
@@ -497,12 +498,12 @@ Links two text frames so text overflowing the first continues in the second. The
 
 ### `create_paragraph_style`
 
-Creates a paragraph style (font, size, leading, alignment, spacing, color…). Apply it with add_text_frame, set_text or apply_paragraph_style.
+Creates one paragraph style (font, size, leading, alignment, spacing, color…) or a whole set in one call — pass "styles" with the list. Define the document's styles in a single call rather than one call each. Apply them with add_text_frame, set_text or apply_paragraph_style.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
-| `name` * | string |  |
+| `name` | string |  |
 | `basedOn` | string |  |
 | `nextStyle` | string |  |
 | `group` | string | Style group (folder) name. |
@@ -510,7 +511,7 @@ Creates a paragraph style (font, size, leading, alignment, spacing, color…). A
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
 | `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
-| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
@@ -528,22 +529,23 @@ Creates a paragraph style (font, size, leading, alignment, spacing, color…). A
 | `keepLinesTogether` | boolean |  |
 | `dropCapLines` | integer |  |
 | `dropCapCharacters` | integer |  |
+| `styles` | array | Several styles at once, e.g. [{name:"Headline",font:"Helvetica",size:28,...},{name:"Body",size:10,...}]. Use this instead of the single-style fields. |
 
 ### `create_character_style`
 
-Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red). Apply it with format_text.
+Creates one character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red) or several at once — pass "styles" with the list. Apply them with format_text.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
-| `name` * | string |  |
+| `name` | string |  |
 | `basedOn` | string |  |
 | `group` | string |  |
 | `font` | string | Font family, e.g. "Helvetica Neue". Must be installed on the designer's computer. |
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
 | `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
-| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
@@ -551,6 +553,7 @@ Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price
 | `position` | `normal` \| `superscript` \| `subscript` |  |
 | `horizontalScale` | number | Percent (1–1000). |
 | `baselineShift` | number | Points. |
+| `styles` | array | Several styles at once. Use this instead of the single-style fields. |
 
 ### `update_style`
 
@@ -567,7 +570,7 @@ Changes settings of an existing paragraph or character style. Everything using t
 | `fontStyle` | string | Font style name: Regular, Bold, Italic, Light, Semibold… |
 | `size` | number | Point size (0.1–1296, as in InDesign). |
 | `leading` | number \| string | Line spacing in points, or "auto". |
-| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `color` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `tracking` | number | Letter spacing in 1/1000 em (-1000 to 10000). |
 | `capitalization` | `normal` \| `small-caps` \| `all-caps` \| `cap-to-small-cap` |  |
 | `underline` | boolean |  |
@@ -599,7 +602,7 @@ Deletes a paragraph or character style; text using it gets the replacement style
 
 ### `create_swatch`
 
-Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for print).
+Creates one named colour swatch from CMYK, RGB or hex values, or a whole palette in one call — pass "swatches" with the list (CMYK recommended for print). Define the document's palette in a single call rather than one call each.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -609,19 +612,20 @@ Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for 
 | `cmyk` | array | Percentages 0-100. |
 | `rgb` | array | Values 0-255. |
 | `spot` | boolean |  |
+| `swatches` | array | A whole palette at once, e.g. [{name:"Brand Blue",color:"cmyk(90,60,0,0)"},{name:"Sand",color:"#e8dcc8"}]. Use this instead of the single-swatch fields. |
 
 ### `create_object_style`
 
-Creates an object style: fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set. Apply it with apply_object_style.
+Creates one object style — fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set — or several at once by passing "styles" with the list. Apply them with apply_object_style.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
-| `name` * | string |  |
+| `name` | string |  |
 | `basedOn` | string |  |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `fillTint` | number |  |
-| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `strokeWeight` | number |  |
 | `strokeType` | string | Solid, Dashed, Dotted… |
 | `strokeAlignment` | `center` \| `inside` \| `outside` |  |
@@ -635,6 +639,7 @@ Creates an object style: fill, stroke, corners, opacity, text frame options and 
 | `verticalJustification` | `top` \| `center` \| `bottom` \| `justify` |  |
 | `textWrap` | `none` \| `bounding-box` |  |
 | `textWrapOffset` | number |  |
+| `styles` | array | Several object styles at once. Use this instead of the single-style fields. |
 
 ### `update_object_style`
 
@@ -644,8 +649,8 @@ Changes an existing object style. Items using it follow automatically in InDesig
 |---|---|---|
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `style` * | string |  |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
-| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
+| `stroke` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `strokeWeight` | number |  |
 | `cornerRadius` | number |  |
 | `cornerShape` | `rounded` \| `inverse-rounded` \| `bevel` \| `inset` \| `fancy` \| `none` |  |
@@ -886,7 +891,7 @@ Renders part of the document to a PNG and shows it, so you can check the layout:
 | `what` * | `page` \| `spread` \| `document` \| `item` | Which subject this is. |
 | `document` * | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. |
 | `page` | integer \| string | Only for page, spread, item. |
-| `width` | integer | Image width in pixels (default 1200). |
+| `width` | integer | Width in pixels of the PNG saved next to the document (default 1200). The picture shown in the reply is capped at about 1400 px whatever this says, so raise it for a file to look at, not for a closer look here — use preview item for that. |
 | `renderer` | `auto` \| `builtin` \| `indesign` | auto (default): use Adobe InDesign for a pixel-exact render if it is installed, otherwise the built-in renderer; builtin: always the built-in renderer; indesign: require InDesign. Only for page, spread. |
 | `showGuides` | boolean | Draw margin and column guides. Only for page, spread, document. |
 | `showFrameEdges` | boolean | Outline text and picture frames. Only for page, spread, item. |
@@ -934,10 +939,10 @@ Puts a table in a text frame (creating the frame when x/y/width/height are given
 | `headerParagraphStyle` | string |  |
 | `cellInset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `strokeWeight` | number | Weight of the lines between cells, in points. |
-| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `borderWeight` | number |  |
-| `borderColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
-| `headerFill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `borderColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
+| `headerFill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `alternatingFill` | string | Fill for every other body row (banding). |
 
 ### `get_table`
@@ -980,10 +985,10 @@ Colours cells, changes their strokes, insets, vertical alignment or paragraph st
 | `fromColumn` | integer |  |
 | `rowSpan` | integer |  |
 | `columnSpan` | integer |  |
-| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `fill` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `fillTint` | number |  |
 | `strokeWeight` | number |  |
-| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. |
+| `strokeColor` | string | A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep". |
 | `inset` | number,string | A length: a number in the default unit (mm) or a string with a unit such as "10mm", "0.5in", "12pt". |
 | `verticalAlignment` | `top` \| `center` \| `bottom` |  |
 | `paragraphStyle` | string |  |
@@ -1030,13 +1035,14 @@ Turns a paragraph style into a bulleted or numbered list (or switches the list o
 | `kind` * | `none` \| `bullet` \| `number` |  |
 | `bulletCharacter` | string | Default •. Try –, ▪, ●, ✓. |
 | `numberStyle` | `arabic` \| `upper-roman` \| `lower-roman` \| `upper-letters` \| `lower-letters` |  |
-| `numberFormat` | string | Pattern, e.g. "^#." for 1. or "^#)" for 1). ^# is the number, ^t a tab. |
+| `numberFormat` | string | Pattern, e.g. "^#." for 1. or "^#)" for 1). ^# is the number, ^t a tab. textAfter is appended to it. |
 | `startAt` | integer |  |
 | `textAfter` | string | What follows the bullet/number, default a tab (^t). |
 | `indent` | number,string | Left indent of the paragraph. |
 | `bulletIndent` | number,string | How far the bullet/number hangs into the margin. |
 | `characterStyle` | string | Character style for the bullet/number itself. |
 | `font` | string | Font for the bullet character. |
+| `fontStyle` | string | Style of that font, e.g. "Bold" (default Regular). |
 
 ### `set_tab_stops`
 

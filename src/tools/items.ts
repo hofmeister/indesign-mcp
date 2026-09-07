@@ -67,7 +67,9 @@ const targetParams = {
   master: z
     .string()
     .optional()
-    .describe('Put the item on this master page instead of a document page, e.g. "A-Master".'),
+    .describe(
+      'Put the item on this master page instead of a document page, e.g. "A-Master". Use this for anything that repeats across pages — running head, footer, folio, background rule, logo — rather than adding a copy to every page.',
+    ),
 };
 
 const placement = {
@@ -79,7 +81,12 @@ const placement = {
 
 const appearance = {
   name: z.string().optional().describe('A name to refer to the item later, e.g. "Headline".'),
-  layer: z.string().optional().describe('Layer name (default: the active layer).'),
+  layer: z
+    .string()
+    .optional()
+    .describe(
+      'Layer to put the item on, e.g. "Text", "Images", "Background" (default: the active layer). Create layers with edit_layers op "create" and name one on every item — a document with everything on one layer is hard to edit later.',
+    ),
   fill: colorParam.optional(),
   stroke: colorParam.optional(),
   strokeWeight: z.number().min(0).max(1000).optional().describe('Stroke weight in points.'),

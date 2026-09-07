@@ -322,13 +322,17 @@ export function registerTextTools(reg: ToolRegistry, ctx: ToolContext): void {
     {
       title: 'Insert page number',
       description:
-        'Adds an automatic page-number marker to a text frame, typically a small frame on a master page (create it with add_text_frame using master).',
+        'Adds an automatic page-number marker to a text frame, so each page shows its own number — at the end of the text, or in place of text you name with replaceText. It belongs in a small frame on a master page — add that frame with add_text_frame using master, not one per page.',
       inputSchema: toolInput({
         document: documentParam,
         item: itemParam,
         page: pageParam.optional(),
         prefix: z.string().optional(),
         suffix: z.string().optional(),
+        replaceText: z
+          .string()
+          .optional()
+          .describe('Text to replace with the marker. Without it the marker is added at the end.'),
         paragraphStyle: z
           .string()
           .optional()
@@ -344,6 +348,7 @@ export function registerTextTools(reg: ToolRegistry, ctx: ToolContext): void {
         appendPageNumberMarker(story, {
           prefix: args.prefix,
           suffix: args.suffix,
+          find: args.replaceText,
           paragraphStyle: args.paragraphStyle,
         });
         ctx.save(doc);

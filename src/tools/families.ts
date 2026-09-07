@@ -41,7 +41,7 @@ export function registerMergedTools(reg: ToolRegistry): void {
     discriminator: 'op',
     keyName: 'operation',
     description: (keys) =>
-      `Creates and changes layers: ${keys.join(', ')}. To move an item between layers use edit_item with op "layer".`,
+      `Creates and changes layers: ${keys.join(', ')}. Give every document a few named layers early ("Background", "Images", "Text") and pass layer: when you add items, so the file stays editable. To move an item between layers use edit_item with op "layer".`,
   });
 
   registerFamilyTool(reg, {

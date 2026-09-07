@@ -149,6 +149,22 @@ function displayName(el: Element): string | undefined {
   return n;
 }
 
+/**
+ * Where the top-left of a master's first page sits in its spread. Items are placed on a master with
+ * coordinates relative to that page (see `resolveContainer`), so they have to be read back against
+ * the same origin — otherwise a frame put at 18, 278 mm reports as -87, 129.5 mm.
+ */
+function masterPageOrigin(doc: IdmlDocument, masterSpreadId: string): Point | undefined {
+  for (const ms of doc.masterSpreads()) {
+    if (attr(ms, 'Self') !== masterSpreadId) continue;
+    const page = children(ms, 'Page')[0];
+    if (!page) return undefined;
+    const m = parseMatrix(attr(page, 'ItemTransform'));
+    return { x: m[4], y: m[5] };
+  }
+  return undefined;
+}
+
 export function itemInfo(
   doc: IdmlDocument,
   el: Element,
@@ -159,6 +175,7 @@ export function itemInfo(
 ): ItemInfo {
   const spreadBounds = itemSpreadBounds(el, parentTransform);
   const page = spreadBounds && !master ? pageForSpreadRect(pages, spreadId, spreadBounds) : undefined;
+  const origin = page?.origin ?? (master ? masterPageOrigin(doc, spreadId) : undefined);
   const type = classify(el);
   const storyId = el.tagName === 'TextFrame' ? attr(el, 'ParentStory') : undefined;
   let text: string | undefined;
@@ -166,7 +183,7 @@ export function itemInfo(
   if (storyId) {
     const story = doc.story(storyId);
     if (story) {
-      text = readStoryPlainText(story);
+      text = readStoryPlainText(story, { namedVariables: true });
       tables = tablesIn(story).length;
     }
   }
@@ -178,8 +195,8 @@ export function itemInfo(
     name: displayName(el),
     page: page?.index,
     bounds: roundRect(
-      spreadBounds && page
-        ? { ...spreadBounds, x: spreadBounds.x - page.origin.x, y: spreadBounds.y - page.origin.y }
+      spreadBounds && origin
+        ? { ...spreadBounds, x: spreadBounds.x - origin.x, y: spreadBounds.y - origin.y }
         : spreadBounds,
     ),
     spreadBounds: roundRect(spreadBounds),
@@ -242,6 +259,62 @@ export function listItems(doc: IdmlDocument, options: ListItemsOptions = {}): It
         if (!isPageItem(el)) continue;
         out.push(itemInfo(doc, el, pages, attr(master, 'Self') ?? '', attr(master, 'Name') ?? 'master'));
       }
+    }
+  }
+  return out;
+}
+
+export interface ObscuredMasterItem {
+  page: number;
+  /** The master item nobody can see. */
+  item: ItemInfo;
+  /** The page item sitting on top of it. */
+  coveredBy: ItemInfo;
+}
+
+/** An item hides what is under it when it has a fill or is a picture. */
+function isOpaque(item: ItemInfo): boolean {
+  if (item.type === 'image' || item.imagePath) return true;
+  return !!item.fill && item.fill !== 'none';
+}
+
+function covers(outer: Rect, inner: Rect, slack = 0.5): boolean {
+  return (
+    outer.x <= inner.x + slack &&
+    outer.y <= inner.y + slack &&
+    outer.x + outer.width >= inner.x + inner.width - slack &&
+    outer.y + outer.height >= inner.y + inner.height - slack
+  );
+}
+
+/**
+ * Master items a page item completely hides.
+ *
+ * InDesign always draws what a page inherits from its master *under* the page's own items, so a
+ * full-page filled rectangle silently swallows the running head and folio — the layout looks right
+ * in the model and wrong on the page. Bringing the master item forward is not possible; the cover
+ * has to change, or the item has to come onto the page with override_master_item.
+ */
+export function obscuredMasterItems(doc: IdmlDocument): ObscuredMasterItem[] {
+  const pages = listPages(doc);
+  const nameById = new Map(doc.masterSpreads().map((m) => [attr(m, 'Self') ?? '', attr(m, 'Name') ?? '']));
+  const fromMasters = listItems(doc, { includeMasters: true }).filter((i) => i.onMaster && i.bounds);
+  if (!fromMasters.length) return [];
+  const pageItems = listItems(doc);
+  const out: ObscuredMasterItem[] = [];
+  for (const page of pages) {
+    const masterName = page.appliedMaster ? nameById.get(page.appliedMaster) : undefined;
+    if (!masterName) continue;
+    // An overridden master item has been pulled onto the page, where normal stacking applies.
+    const overridden = new Set(
+      (attr(doc.findBySelf(page.id)?.element as Element, 'OverrideList') ?? '').split(/\s+/).filter(Boolean),
+    );
+    const covers_ = pageItems.filter((i) => i.page === page.index && i.bounds && isOpaque(i));
+    if (!covers_.length) continue;
+    for (const inherited of fromMasters) {
+      if (inherited.onMaster !== masterName || overridden.has(inherited.id)) continue;
+      const cover = covers_.find((c) => covers(c.bounds!, inherited.bounds!));
+      if (cover) out.push({ page: page.index, item: inherited, coveredBy: cover });
     }
   }
   return out;

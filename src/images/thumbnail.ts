@@ -90,6 +90,42 @@ export function thumbnailBase64(
   return { data: Buffer.from(encoded).toString('base64'), mimeType: hasAlpha ? 'image/png' : 'image/jpeg' };
 }
 
+/**
+ * An image small enough to travel back inside a tool result.
+ *
+ * A tool result has a size limit, and a page rendered at the widths this server accepts blows it —
+ * which used to surface as "Tool output too large" with the preview lost. The picture handed to the
+ * model is capped here; the PNG written next to the document keeps the resolution that was asked
+ * for, so nothing is lost from the file the user opens.
+ */
+export function inlineImage(
+  bytes: Uint8Array,
+  mimeType: string,
+  options: { maxEdge?: number; maxBytes?: number } = {},
+): { data: string; mimeType: string; width: number; height: number; reduced: boolean } | undefined {
+  const maxBytes = options.maxBytes ?? 400_000;
+  const raster = decodeRaster(bytes, mimeType);
+  if (!raster) return undefined;
+  let edge = Math.min(options.maxEdge ?? 1400, Math.max(raster.width, raster.height));
+  // Shrink until it fits the budget. Encoded size does not follow pixel count closely enough to
+  // solve for, so step down and measure; a page of dense text is the case that needs more than one.
+  for (;;) {
+    const small = downscale(raster, edge);
+    const alpha = hasTransparency(small);
+    const encoded = alpha ? encodePng(small) : encodeJpeg(small, 82);
+    if (encoded.length <= maxBytes || edge <= 400) {
+      return {
+        data: Buffer.from(encoded).toString('base64'),
+        mimeType: alpha ? 'image/png' : 'image/jpeg',
+        width: small.width,
+        height: small.height,
+        reduced: small.width !== raster.width || small.height !== raster.height,
+      };
+    }
+    edge = Math.max(400, Math.round(edge * 0.75));
+  }
+}
+
 function hasTransparency(r: Raster): boolean {
   for (let i = 3; i < r.data.length; i += 4) if (r.data[i]! < 250) return true;
   return false;

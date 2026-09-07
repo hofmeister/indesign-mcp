@@ -4,6 +4,11 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { createParagraphStyle, resolveStyle } from '../src/idml/styles.ts';
+import { createDocument } from '../src/idml/template.ts';
+import { applyListSettings } from '../src/idml/typography.ts';
+import { attr, getProperty } from '../src/idml/xml.ts';
+import { fontCatalog } from '../src/preview/fonts.ts';
 import { createServer } from '../src/server.ts';
 
 async function connectedClient(): Promise<Client> {
@@ -65,6 +70,295 @@ describe('numbers sent as strings', () => {
   });
 });
 
+describe('creating many at once', () => {
+  test('a whole palette and type scale in one call each', async () => {
+    const client = await connectedClient();
+    const document = docPath('bulk');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+
+    const swatches = await call(client, 'create_swatch', {
+      document,
+      swatches: [
+        { name: 'Brand Blue', color: 'cmyk(90,60,0,0)' },
+        { name: 'Sand', color: '#e8dcc8' },
+        { name: 'Ink', color: 'cmyk(0,0,0,100)' },
+      ],
+    });
+    expect(swatches.isError).toBeFalsy();
+    expect(swatches.content[0]?.text ?? '').toContain('Created 3 swatches');
+
+    const styles = await call(client, 'create_paragraph_style', {
+      document,
+      styles: [
+        { name: 'Headline', size: 28, leading: 30, color: 'Brand Blue' },
+        { name: 'Body', size: 10, leading: 13 },
+        { name: 'Caption', size: 8, color: 'Sand' },
+      ],
+    });
+    expect(styles.isError).toBeFalsy();
+    expect(styles.content[0]?.text ?? '').toContain('Created 3 paragraph styles: Headline, Body, Caption');
+
+    const listed = await call(client, 'list', { what: 'styles', document, kind: 'paragraph' });
+    for (const name of ['Headline', 'Body', 'Caption']) expect(listed.content[0]?.text).toContain(name);
+  });
+
+  test('the single-item form still works', async () => {
+    const client = await connectedClient();
+    const document = docPath('single');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const swatch = await call(client, 'create_swatch', { document, name: 'Accent', color: '#ff6600' });
+    expect(swatch.content[0]?.text ?? '').toBe('Created swatch "Accent" (#ff6600).');
+    const style = await call(client, 'create_paragraph_style', { document, name: 'Quote', size: 12 });
+    expect(style.content[0]?.text ?? '').toBe('Created paragraph style "Quote".');
+  });
+
+  test('one bad entry creates nothing and leaves no half-built document behind', async () => {
+    const client = await connectedClient();
+    const document = docPath('atomic');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', { document, name: 'Body', size: 10 });
+
+    // "Body" already exists, so the second entry fails after the first was built in memory.
+    const r = await call(client, 'create_paragraph_style', {
+      document,
+      styles: [
+        { name: 'Fresh One', size: 9 },
+        { name: 'Body', size: 9 },
+        { name: 'Fresh Two', size: 9 },
+      ],
+    });
+    expect(r.isError).toBeTruthy();
+    const message = r.content.map((c) => c.text).join('');
+    expect(message).toContain('already exists');
+    expect(message).toContain('number 2 of 3');
+    expect(message).toContain('Nothing was created');
+
+    // Neither the entry before the failure nor the one after it may survive, in this call or a later one.
+    const listed = await call(client, 'list', { what: 'styles', document, kind: 'paragraph' });
+    expect(listed.content[0]?.text).not.toContain('Fresh One');
+    expect(listed.content[0]?.text).not.toContain('Fresh Two');
+  });
+
+  test('the two forms may not be mixed, and one of them is required', async () => {
+    const client = await connectedClient();
+    const document = docPath('forms');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const both = await call(client, 'create_swatch', {
+      document,
+      name: 'X',
+      swatches: [{ name: 'Y', color: '#000000' }],
+    });
+    expect(both.isError).toBeTruthy();
+    expect(both.content.map((c) => c.text).join('')).toContain('not both');
+
+    const empty = await call(client, 'create_paragraph_style', { document, styles: [] });
+    expect(empty.isError).toBeTruthy();
+
+    const neither = await call(client, 'create_paragraph_style', { document });
+    expect(neither.isError).toBeTruthy();
+    expect(neither.content.map((c) => c.text).join('')).toContain('"styles" list');
+  });
+
+  test('a list sent as JSON text is still understood', async () => {
+    const client = await connectedClient();
+    const document = docPath('stringified');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const r = await call(client, 'create_swatch', {
+      document,
+      swatches: JSON.stringify([{ name: 'Via String', color: '#123456' }]),
+    });
+    expect(r.isError).toBeFalsy();
+    expect(r.content[0]?.text ?? '').toContain('Via String');
+  });
+});
+
+describe('refusing an option says where it belongs', () => {
+  test('a formatting key sent to apply_paragraph_style points at update_style and format_text', async () => {
+    const client = await connectedClient();
+    const document = docPath('keys');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', { document, name: 'Running head', size: 8 });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Head',
+      text: 'Chapter one',
+      x: 20,
+      y: 15,
+      width: 170,
+      height: 6,
+    });
+    const r = await call(client, 'apply_paragraph_style', {
+      document,
+      item: 'Head',
+      style: 'Running head',
+      alignment: 'right',
+    });
+    expect(r.isError).toBeTruthy();
+    const message = r.content.map((c) => c.text).join('');
+    expect(message).toContain('Unknown option "alignment"');
+    expect(message).toContain('This tool takes: document, item, page, style, paragraphs, containing.');
+    expect(message).toContain('update_style');
+    expect(message).toContain('format_text');
+  });
+
+  test('a near miss is offered as a correction', async () => {
+    const client = await connectedClient();
+    const document = docPath('typo');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    const r = await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      text: 'x',
+      x: 10,
+      y: 10,
+      widht: 50,
+      height: 20,
+    });
+    expect(r.isError).toBeTruthy();
+    expect(r.content.map((c) => c.text).join('')).toContain('Did you mean "width"?');
+  });
+});
+
+describe('master pages', () => {
+  test('an item on a master reads back at the coordinates it was placed with', async () => {
+    const client = await connectedClient();
+    const document = docPath('mastercoords');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2 });
+    const added = await call(client, 'add_text_frame', {
+      document,
+      master: 'A-Master',
+      name: 'Folio',
+      text: 'p',
+      x: 18,
+      y: 278,
+      width: 20,
+      height: 6,
+    });
+    // Used to report the spread-relative position (-87mm, 129.5mm) for the same placement.
+    expect(added.content[0]?.text ?? '').toContain('18mm, 278mm');
+    const listed = await call(client, 'list', { what: 'items', document, includeMasters: true });
+    expect(listed.content[0]?.text ?? '').toContain('18mm, 278mm');
+  });
+
+  test('a master item hidden under a page item is reported by preflight and preview', async () => {
+    const client = await connectedClient();
+    const document = docPath('covered');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 3 });
+    await call(client, 'add_text_frame', {
+      document,
+      master: 'A-Master',
+      name: 'Folio',
+      text: 'Acme',
+      x: 18,
+      y: 278,
+      width: 60,
+      height: 6,
+    });
+    // Page 1: a filled full-page rectangle swallows it.
+    await call(client, 'add_shape', {
+      document,
+      shape: 'rectangle',
+      page: 1,
+      name: 'White box',
+      x: 0,
+      y: 0,
+      width: 210,
+      height: 297,
+      fill: 'Paper',
+    });
+    // Page 2: a panel that stops short of the folio hides nothing.
+    await call(client, 'add_shape', {
+      document,
+      shape: 'rectangle',
+      page: 2,
+      name: 'Half panel',
+      x: 0,
+      y: 0,
+      width: 210,
+      height: 150,
+      fill: 'Paper',
+    });
+    // Page 3: a frame with no fill covers the area but hides nothing.
+    await call(client, 'add_text_frame', {
+      document,
+      page: 3,
+      name: 'Clear frame',
+      text: 'hi',
+      x: 0,
+      y: 0,
+      width: 210,
+      height: 297,
+    });
+
+    const report = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(report).toContain('"Folio" from master A-Master is completely covered on page 1 by "White box"');
+    expect(report).not.toContain('page 2');
+    expect(report).not.toContain('Clear frame" is completely covered');
+    expect(report).toContain('override_master_item');
+
+    const preview = await call(client, 'preview', {
+      what: 'page',
+      document,
+      page: 1,
+      renderer: 'builtin',
+      width: 400,
+    });
+    const previewText = preview.content
+      .filter((c) => c.type === 'text')
+      .map((c) => c.text)
+      .join('\n');
+    expect(previewText).toContain('is hidden behind "White box"');
+
+    const quiet = await call(client, 'preview', {
+      what: 'page',
+      document,
+      page: 2,
+      renderer: 'builtin',
+      width: 400,
+    });
+    expect(
+      quiet.content
+        .filter((c) => c.type === 'text')
+        .map((c) => c.text)
+        .join('\n'),
+    ).not.toContain('is hidden behind');
+  });
+
+  test('overriding the item onto the page settles it', async () => {
+    const client = await connectedClient();
+    const document = docPath('override');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 1 });
+    await call(client, 'add_text_frame', {
+      document,
+      master: 'A-Master',
+      name: 'Folio',
+      text: 'Acme',
+      x: 18,
+      y: 278,
+      width: 60,
+      height: 6,
+    });
+    await call(client, 'add_shape', {
+      document,
+      shape: 'rectangle',
+      page: 1,
+      name: 'White box',
+      x: 0,
+      y: 0,
+      width: 210,
+      height: 297,
+      fill: 'Paper',
+    });
+    const before = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(before).toContain('completely covered');
+
+    await call(client, 'override_master_item', { document, page: 1, item: 'Folio' });
+    const after = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(after).not.toContain('completely covered');
+  });
+});
+
 describe('preflight', () => {
   test('a frame holding a table is not reported as empty', async () => {
     const client = await connectedClient();
@@ -84,6 +378,124 @@ describe('preflight', () => {
     const report = await call(client, 'preflight_document', { document });
     expect(report.isError).toBeFalsy();
     expect(report.content[0]?.text ?? '').not.toContain('S5-tabel" is empty');
+  });
+
+  test('page furniture copied onto every page is reported, and a master fixes it', async () => {
+    const client = await connectedClient();
+    const document = docPath('furniture');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 4 });
+    for (const page of [1, 2, 3, 4]) {
+      // Body copy: different prose on every page, so it must not look repeated.
+      await call(client, 'add_text_frame', {
+        document,
+        page,
+        name: `Body ${page}`,
+        text: `Chapter text for page ${page}, quite different prose each time.`,
+        x: 20,
+        y: 60,
+        width: 170,
+        height: 150,
+      });
+      // A folio: same strip every page, differing only by the number.
+      await call(client, 'add_text_frame', {
+        document,
+        page,
+        name: `Footer ${page}`,
+        text: `Acme Report — page ${page} of 4`,
+        x: 20,
+        y: 275,
+        width: 170,
+        height: 8,
+      });
+    }
+    const before = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(before).toContain('"Footer 1" is repeated in the same place on 4 pages');
+    expect(before).toContain('master page');
+    expect(before).not.toContain('"Body 1" is repeated');
+
+    // The same layout done properly: the folio lives on the master, once.
+    const fixed = docPath('furniture-fixed');
+    await call(client, 'new_document', { path: fixed, pageSize: 'A4', pages: 4 });
+    await call(client, 'edit_layers', { document: fixed, op: 'create', name: 'Text' });
+    await call(client, 'add_text_frame', {
+      document: fixed,
+      master: 'A-Master',
+      name: 'Footer',
+      text: 'Acme Report',
+      x: 20,
+      y: 275,
+      width: 170,
+      height: 8,
+    });
+    for (const page of [1, 2, 3, 4]) {
+      await call(client, 'add_text_frame', {
+        document: fixed,
+        page,
+        layer: 'Text',
+        name: `Body ${page}`,
+        text: `Chapter text for page ${page}, quite different prose each time.`,
+        x: 20,
+        y: 60,
+        width: 170,
+        height: 150,
+      });
+    }
+    const after = (await call(client, 'preflight_document', { document: fixed })).content[0]?.text ?? '';
+    expect(after).not.toContain('is repeated in the same place');
+    expect(after).not.toContain('Everything is on one layer');
+  });
+
+  test('two pages is already enough to ask for a master', async () => {
+    const client = await connectedClient();
+    const document = docPath('two-pages');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2 });
+    for (const page of [1, 2]) {
+      await call(client, 'add_text_frame', {
+        document,
+        page,
+        name: `Footer ${page}`,
+        text: `Acme Report — page ${page}`,
+        x: 20,
+        y: 275,
+        width: 170,
+        height: 8,
+      });
+    }
+    const report = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    // A two-page draft is usually the start of a longer document, so flag it now.
+    expect(report).toContain('"Footer 1" is repeated in the same place on 2 pages');
+    expect(report).toContain('pages you add later then inherit it automatically');
+  });
+
+  test('a single page never looks repeated', async () => {
+    const client = await connectedClient();
+    const document = docPath('one-page');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 1 });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Footer',
+      text: 'Acme Report',
+      x: 20,
+      y: 275,
+      width: 170,
+      height: 8,
+    });
+    const report = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(report).not.toContain('is repeated in the same place');
+  });
+
+  test('a document left on a single layer is reported', async () => {
+    const client = await connectedClient();
+    const document = docPath('layers');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2 });
+    const before = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(before).toContain('Everything is on one layer');
+    // The advice has to be runnable as written.
+    expect(before).toContain('edit_layers (op "create")');
+    await call(client, 'edit_layers', { document, op: 'create', name: 'Images' });
+    const after = (await call(client, 'preflight_document', { document })).content[0]?.text ?? '';
+    expect(after).not.toContain('Everything is on one layer');
   });
 
   test('the font check survives a font whose postscript name is not a string', async () => {
@@ -353,5 +765,156 @@ describe('tool descriptions', () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+describe('second round of real-document testing', () => {
+  test('an object style leaves paragraphs that already have a style alone', async () => {
+    const client = await connectedClient();
+    const document = docPath('objectstyle');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', { document, name: 'Heading 2', size: 16 });
+    await call(client, 'create_paragraph_style', { document, name: 'Body First', size: 10 });
+    await call(client, 'create_object_style', { document, name: 'Panel', paragraphStyle: 'Body First' });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Panel Frame',
+      x: 20,
+      y: 20,
+      width: 120,
+      height: 60,
+      paragraphs: [
+        { text: 'A heading', style: 'Heading 2' },
+        { text: 'Some body copy.', style: 'Body First' },
+      ],
+    });
+    await call(client, 'apply_object_style', { document, item: 'Panel Frame', style: 'Panel' });
+
+    const text = await call(client, 'get_text', { document, item: 'Panel Frame' });
+    expect(text.content[0]?.text ?? '').toContain('Heading 2');
+  });
+
+  test('a numbered list keeps textAfter alongside numberFormat, and a bullet keeps its font', () => {
+    const doc = createDocument({ pageSize: 'A4', pages: 1 });
+    const numbered = createParagraphStyle(doc, { name: 'Numbered', size: 10 });
+    applyListSettings(doc, resolveStyle(doc, 'ParagraphStyle', 'Numbered'), {
+      kind: 'number',
+      numberFormat: '^#.',
+      textAfter: '^t',
+    });
+    expect(numbered.name).toBe('Numbered');
+    const style = resolveStyle(doc, 'ParagraphStyle', 'Numbered');
+    expect(attr(style, 'NumberingExpression')).toBe('^#.^t');
+
+    createParagraphStyle(doc, { name: 'Bulleted', size: 10 });
+    const bulleted = resolveStyle(doc, 'ParagraphStyle', 'Bulleted');
+    applyListSettings(doc, bulleted, { kind: 'bullet', bulletCharacter: '▪', font: 'Helvetica Neue' });
+    // InDesign ignores an object reference here; the font has to be a plain string plus a style.
+    expect(getProperty(bulleted, 'BulletsFont')).toEqual({ type: 'string', value: 'Helvetica Neue' });
+    expect(getProperty(bulleted, 'BulletsFontStyle')?.value).toBe('Regular');
+  });
+
+  test('a bullet character the font has no glyph for is reported', async () => {
+    const client = await connectedClient();
+    const document = docPath('bulletfont');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_paragraph_style', { document, name: 'B', font: 'Liberation Sans', size: 10 });
+    const r = await call(client, 'set_list_options', {
+      document,
+      style: 'B',
+      kind: 'bullet',
+      bulletCharacter: '▪',
+    });
+    // InDesign draws the bullet in the list's own font and shows a box when the glyph is missing.
+    const alternative = fontCatalog().faceWithGlyph(0x25aa)?.info.family;
+    const text = r.content[0]?.text ?? '';
+    if (alternative) expect(text).toContain(alternative);
+    else expect(text).toContain('missing-glyph');
+
+    const plain = await call(client, 'set_list_options', {
+      document,
+      style: 'B',
+      kind: 'bullet',
+      bulletCharacter: '•',
+    });
+    expect(plain.content[0]?.text ?? '').not.toContain('Note:');
+  });
+
+  test('insert_page_number can replace text, like insert_text_variable', async () => {
+    const client = await connectedClient();
+    const document = docPath('folio');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Folio',
+      x: 20,
+      y: 20,
+      width: 120,
+      height: 20,
+      text: 'Page # of 4',
+    });
+    const r = await call(client, 'insert_page_number', {
+      document,
+      item: 'Folio',
+      replaceText: '#',
+    });
+    expect(r.isError).toBeFalsy();
+    const text = await call(client, 'get_text', { document, item: 'Folio' });
+    expect(text.content[0]?.text ?? '').toContain('of 4');
+  });
+
+  test('a variable put in beside a page-number marker leaves the marker alone', async () => {
+    const client = await connectedClient();
+    const document = docPath('folio2');
+    await call(client, 'new_document', { path: document, pageSize: 'A4', pages: 2 });
+    await call(client, 'create_text_variable', { document, name: 'Last Page', kind: 'last-page-number' });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Folio',
+      x: 20,
+      y: 275,
+      width: 80,
+      height: 10,
+      text: 'Page # of L',
+    });
+    await call(client, 'insert_page_number', { document, item: 'Folio', replaceText: '#' });
+    await call(client, 'insert_text_variable', {
+      document,
+      item: 'Folio',
+      variable: 'Last Page',
+      replaceText: 'L',
+    });
+
+    // Rebuilding the <Content> from its text used to throw the marker away.
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
+    expect(items.content[0]?.text ?? '').toContain('Page # of <Last Page>');
+  });
+
+  test('a frame holding only a text variable is not listed as empty', async () => {
+    const client = await connectedClient();
+    const document = docPath('variable');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+    await call(client, 'create_text_variable', {
+      document,
+      name: 'Running Head',
+      kind: 'last-page-number',
+    });
+    await call(client, 'add_text_frame', {
+      document,
+      page: 1,
+      name: 'Head',
+      x: 20,
+      y: 20,
+      width: 120,
+      height: 20,
+      text: '',
+    });
+    await call(client, 'insert_text_variable', { document, item: 'Head', variable: 'Running Head' });
+
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
+    expect(items.content[0]?.text ?? '').toContain('<Running Head>');
   });
 });

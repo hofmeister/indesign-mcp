@@ -13,7 +13,20 @@ import {
 } from '../idml/styles.ts';
 import type { ToolContext } from './context.ts';
 import type { ToolRegistry } from './registry.ts';
-import { colorParam, documentParam, itemParam, ok, pageParam, run, toolInput } from './shared.ts';
+import {
+  colorParam,
+  createAll,
+  createdSummary,
+  documentParam,
+  itemParam,
+  makeOptional,
+  ok,
+  oneOrMany,
+  pageParam,
+  requireNames,
+  run,
+  toolInput,
+} from './shared.ts';
 
 const textStyleFields = {
   font: z
@@ -109,53 +122,93 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
+  const paragraphStyleFields = {
+    name: z.string(),
+    basedOn: z.string().optional(),
+    nextStyle: z.string().optional(),
+    group: z.string().optional().describe('Style group (folder) name.'),
+    ...textStyleFields,
+    ...paragraphFields,
+  };
+
   reg.tool(
     'create_paragraph_style',
     {
-      title: 'Create paragraph style',
+      title: 'Create paragraph styles',
       description:
-        'Creates a paragraph style (font, size, leading, alignment, spacing, color…). Apply it with add_text_frame, set_text or apply_paragraph_style.',
+        'Creates one paragraph style (font, size, leading, alignment, spacing, color…) or a whole set in one call — pass "styles" with the list. Define the document\'s styles in a single call rather than one call each. Apply them with add_text_frame, set_text or apply_paragraph_style.',
       inputSchema: toolInput({
         document: documentParam,
-        name: z.string(),
-        basedOn: z.string().optional(),
-        nextStyle: z.string().optional(),
-        group: z.string().optional().describe('Style group (folder) name.'),
-        ...textStyleFields,
-        ...paragraphFields,
+        ...makeOptional(paragraphStyleFields),
+        styles: z
+          .array(toolInput(paragraphStyleFields))
+          .optional()
+          .describe(
+            'Several styles at once, e.g. [{name:"Headline",font:"Helvetica",size:28,...},{name:"Body",size:10,...}]. Use this instead of the single-style fields.',
+          ),
       }),
     },
     async (args) =>
       run(() => {
-        const doc = ctx.open(args.document);
-        const { document: _d, ...spec } = args;
-        const info = createParagraphStyle(doc, spec);
-        ctx.save(doc);
-        return ok(`Created paragraph style "${info.name}".`, { style: info });
+        const { document, styles, ...single } = args;
+        const specs = requireNames(
+          oneOrMany(single, styles, { one: 'paragraph style', list: 'styles' }),
+          'paragraph style',
+        );
+        const { results } = createAll(ctx, document, specs, (doc, spec) =>
+          createParagraphStyle(doc, spec as Parameters<typeof createParagraphStyle>[1]),
+        );
+        return ok(
+          createdSummary(
+            'paragraph style',
+            'paragraph styles',
+            results.map((r) => r.name),
+          ),
+          { styles: results },
+        );
       }),
   );
+
+  const characterStyleFields = {
+    name: z.string(),
+    basedOn: z.string().optional(),
+    group: z.string().optional(),
+    ...textStyleFields,
+  };
 
   reg.tool(
     'create_character_style',
     {
-      title: 'Create character style',
+      title: 'Create character styles',
       description:
-        'Creates a character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red). Apply it with format_text.',
+        'Creates one character style for inline formatting (e.g. "Emphasis": italic; "Price": bold red) or several at once — pass "styles" with the list. Apply them with format_text.',
       inputSchema: toolInput({
         document: documentParam,
-        name: z.string(),
-        basedOn: z.string().optional(),
-        group: z.string().optional(),
-        ...textStyleFields,
+        ...makeOptional(characterStyleFields),
+        styles: z
+          .array(toolInput(characterStyleFields))
+          .optional()
+          .describe('Several styles at once. Use this instead of the single-style fields.'),
       }),
     },
     async (args) =>
       run(() => {
-        const doc = ctx.open(args.document);
-        const { document: _d, ...spec } = args;
-        const info = createCharacterStyle(doc, spec);
-        ctx.save(doc);
-        return ok(`Created character style "${info.name}".`, { style: info });
+        const { document, styles, ...single } = args;
+        const specs = requireNames(
+          oneOrMany(single, styles, { one: 'character style', list: 'styles' }),
+          'character style',
+        );
+        const { results } = createAll(ctx, document, specs, (doc, spec) =>
+          createCharacterStyle(doc, spec as Parameters<typeof createCharacterStyle>[1]),
+        );
+        return ok(
+          createdSummary(
+            'character style',
+            'character styles',
+            results.map((r) => r.name),
+          ),
+          { styles: results },
+        );
       }),
   );
 
@@ -241,49 +294,66 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
       }),
   );
 
+  const swatchFields = {
+    name: z.string().optional().describe('Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0").'),
+    color: z.string().optional().describe('"#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)".'),
+    cmyk: z
+      .tuple([
+        z.number().min(0).max(100),
+        z.number().min(0).max(100),
+        z.number().min(0).max(100),
+        z.number().min(0).max(100),
+      ])
+      .optional()
+      .describe('Percentages 0-100.'),
+    rgb: z
+      .tuple([
+        z.number().int().min(0).max(255),
+        z.number().int().min(0).max(255),
+        z.number().int().min(0).max(255),
+      ])
+      .optional()
+      .describe('Values 0-255.'),
+    spot: z.boolean().optional(),
+  };
+
   reg.tool(
     'create_swatch',
     {
-      title: 'Create swatch',
-      description: 'Creates a named color swatch from CMYK, RGB or hex values (CMYK recommended for print).',
+      title: 'Create swatches',
+      description:
+        'Creates one named colour swatch from CMYK, RGB or hex values, or a whole palette in one call — pass "swatches" with the list (CMYK recommended for print). Define the document\'s palette in a single call rather than one call each.',
       inputSchema: toolInput({
         document: documentParam,
-        name: z.string().optional().describe('Swatch name (default: InDesign-style "C=0 M=100 Y=0 K=0").'),
-        color: z.string().optional().describe('"#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)".'),
-        cmyk: z
-          .tuple([
-            z.number().min(0).max(100),
-            z.number().min(0).max(100),
-            z.number().min(0).max(100),
-            z.number().min(0).max(100),
-          ])
+        ...swatchFields,
+        swatches: z
+          .array(toolInput(swatchFields))
           .optional()
-          .describe('Percentages 0-100.'),
-        rgb: z
-          .tuple([
-            z.number().int().min(0).max(255),
-            z.number().int().min(0).max(255),
-            z.number().int().min(0).max(255),
-          ])
-          .optional()
-          .describe('Values 0-255.'),
-        spot: z.boolean().optional(),
+          .describe(
+            'A whole palette at once, e.g. [{name:"Brand Blue",color:"cmyk(90,60,0,0)"},{name:"Sand",color:"#e8dcc8"}]. Use this instead of the single-swatch fields.',
+          ),
       }),
     },
     async (args) =>
       run(() => {
-        const doc = ctx.open(args.document);
-        const parsed = args.color ? parseColorString(args.color) : undefined;
-        if (args.color && !parsed) throw new Error(`Cannot understand color "${args.color}"`);
-        const info = createSwatch(doc, {
-          name: args.name,
-          cmyk: args.cmyk ?? parsed?.cmyk,
-          rgb: args.rgb ?? parsed?.rgb,
-          hex: parsed?.hex,
-          spot: args.spot,
+        const { document, swatches, ...single } = args;
+        const specs = oneOrMany(single, swatches, { one: 'swatch', list: 'swatches' });
+        const { results } = createAll(ctx, document, specs, (doc, spec) => {
+          const parsed = spec.color ? parseColorString(spec.color) : undefined;
+          if (spec.color && !parsed) throw new Error(`Cannot understand color "${spec.color}"`);
+          return createSwatch(doc, {
+            name: spec.name,
+            cmyk: spec.cmyk ?? parsed?.cmyk,
+            rgb: spec.rgb ?? parsed?.rgb,
+            hex: parsed?.hex,
+            spot: spec.spot,
+          });
         });
-        ctx.save(doc);
-        return ok(`Created swatch "${info.name}"${info.hex ? ` (${info.hex})` : ''}.`, { swatch: info });
+        const text =
+          results.length === 1
+            ? `Created swatch "${results[0]!.name}"${results[0]!.hex ? ` (${results[0]!.hex})` : ''}.`
+            : `Created ${results.length} swatches: ${results.map((r) => `${r.name}${r.hex ? ` (${r.hex})` : ''}`).join(', ')}.`;
+        return ok(text, { swatches: results });
       }),
   );
 
@@ -314,45 +384,64 @@ export function registerStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
 
 /** Object styles and gradient swatches. */
 export function registerObjectStyleTools(reg: ToolRegistry, ctx: ToolContext): void {
+  const objectStyleFields = {
+    name: z.string(),
+    basedOn: z.string().optional(),
+    fill: colorParam.optional(),
+    fillTint: z.number().min(0).max(100).optional(),
+    stroke: colorParam.optional(),
+    strokeWeight: z.number().min(0).optional(),
+    strokeType: z.string().optional().describe('Solid, Dashed, Dotted…'),
+    strokeAlignment: z.enum(['center', 'inside', 'outside']).optional(),
+    cornerRadius: z.number().min(0).optional().describe('Points.'),
+    cornerShape: z.enum(['rounded', 'inverse-rounded', 'bevel', 'inset', 'fancy', 'none']).optional(),
+    opacity: z.number().min(0).max(100).optional(),
+    paragraphStyle: z
+      .string()
+      .optional()
+      .describe('Paragraph style applied to text in frames using this style.'),
+    columns: z.number().int().min(1).max(20).optional(),
+    gutter: z.number().min(0).optional(),
+    inset: z.number().min(0).optional(),
+    verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
+    textWrap: z.enum(['none', 'bounding-box']).optional(),
+    textWrapOffset: z.number().min(0).optional(),
+  };
+
   reg.tool(
     'create_object_style',
     {
-      title: 'Create object style',
+      title: 'Create object styles',
       description:
-        'Creates an object style: fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set. Apply it with apply_object_style.',
+        'Creates one object style — fill, stroke, corners, opacity, text frame options and a paragraph style in one reusable set — or several at once by passing "styles" with the list. Apply them with apply_object_style.',
       inputSchema: toolInput({
         document: documentParam,
-        name: z.string(),
-        basedOn: z.string().optional(),
-        fill: colorParam.optional(),
-        fillTint: z.number().min(0).max(100).optional(),
-        stroke: colorParam.optional(),
-        strokeWeight: z.number().min(0).optional(),
-        strokeType: z.string().optional().describe('Solid, Dashed, Dotted…'),
-        strokeAlignment: z.enum(['center', 'inside', 'outside']).optional(),
-        cornerRadius: z.number().min(0).optional().describe('Points.'),
-        cornerShape: z.enum(['rounded', 'inverse-rounded', 'bevel', 'inset', 'fancy', 'none']).optional(),
-        opacity: z.number().min(0).max(100).optional(),
-        paragraphStyle: z
-          .string()
+        ...makeOptional(objectStyleFields),
+        styles: z
+          .array(toolInput(objectStyleFields))
           .optional()
-          .describe('Paragraph style applied to text in frames using this style.'),
-        columns: z.number().int().min(1).max(20).optional(),
-        gutter: z.number().min(0).optional(),
-        inset: z.number().min(0).optional(),
-        verticalJustification: z.enum(['top', 'center', 'bottom', 'justify']).optional(),
-        textWrap: z.enum(['none', 'bounding-box']).optional(),
-        textWrapOffset: z.number().min(0).optional(),
+          .describe('Several object styles at once. Use this instead of the single-style fields.'),
       }),
     },
     async (args) =>
       run(() => {
-        const doc = ctx.open(args.document);
-        const { document: _d, ...spec } = args;
+        const { document, styles, ...single } = args;
+        const specs = requireNames(
+          oneOrMany(single, styles, { one: 'object style', list: 'styles' }),
+          'object style',
+        );
         const { createObjectStyle } = require('../idml/styles.ts') as typeof import('../idml/styles.ts');
-        const info = createObjectStyle(doc, spec);
-        ctx.save(doc);
-        return ok(`Created object style "${info.name}".`, { style: info });
+        const { results } = createAll(ctx, document, specs, (doc, spec) =>
+          createObjectStyle(doc, spec as Parameters<typeof createObjectStyle>[1]),
+        );
+        return ok(
+          createdSummary(
+            'object style',
+            'object styles',
+            results.map((r) => r.name),
+          ),
+          { styles: results },
+        );
       }),
   );
 

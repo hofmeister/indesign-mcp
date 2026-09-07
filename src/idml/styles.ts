@@ -2,6 +2,7 @@
 import type { IdmlDocument } from './document.ts';
 import { decodeStyleName, displayStyleName, encodeStyleName } from './ids.ts';
 import { escapeAttr } from './layers.ts';
+import { BASIC_PARAGRAPH_STYLE } from './stories.ts';
 import {
   attr,
   children,
@@ -896,9 +897,14 @@ export function applyObjectStyle(doc: IdmlDocument, item: Element, ref: string):
   if (para && item.tagName === 'TextFrame') {
     const storyId = attr(item, 'ParentStory');
     const story = storyId ? doc.story(storyId) : undefined;
+    // InDesign only lets an object style's paragraph style reach text that is still
+    // unstyled — paragraphs given a style of their own keep it.
     if (story)
-      for (const psr of Array.from(story.getElementsByTagName('ParagraphStyleRange')) as Element[])
+      for (const psr of Array.from(story.getElementsByTagName('ParagraphStyleRange')) as Element[]) {
+        const current = attr(psr, 'AppliedParagraphStyle');
+        if (current && current !== BASIC_PARAGRAPH_STYLE) continue;
         psr.setAttribute('AppliedParagraphStyle', para);
+      }
   }
   return self;
 }

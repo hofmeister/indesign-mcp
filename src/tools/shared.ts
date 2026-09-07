@@ -25,7 +25,7 @@ export const itemParam = z.string().describe("The item's name or id (see describ
 export const colorParam = z
   .string()
   .describe(
-    'A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values.',
+    'A swatch name ("Black", "Paper", "Brand Blue"), "none", a hex color like "#ff6600", "cmyk(0,60,100,0)" or "rgb(255,102,0)". Unknown colors are created as new swatches; add "as <name>" ("#14342b as Brand Green") to name the swatch instead of letting it be called after its values. Hex and rgb make RGB swatches, which preflight flags for print: for print work write the colour as "cmyk(75,45,0,60) as Brand Deep".',
   );
 
 export const paragraphInput = z.object({
@@ -69,12 +69,173 @@ function tolerantInput(inner: z.ZodType): z.ZodType {
 }
 
 /**
- * Builds a tool input schema. Same as `z.strictObject`, but tolerant of values a client stringified.
+ * Where a setting actually lives, when it was sent to a tool that does not take it. Refusing an
+ * option is right; refusing it without saying where it belongs costs a round trip.
+ */
+const KEY_HINTS: { keys: string[]; hint: string }[] = [
+  {
+    keys: [
+      'alignment',
+      'font',
+      'fontStyle',
+      'size',
+      'leading',
+      'color',
+      'tracking',
+      'capitalization',
+      'underline',
+      'strikeThrough',
+      'spaceBefore',
+      'spaceAfter',
+      'leftIndent',
+      'rightIndent',
+      'firstLineIndent',
+      'hyphenation',
+      'keepLines',
+      'dropCapLines',
+      'dropCapCharacters',
+    ],
+    hint: 'Formatting is not set where a style is applied: change the style itself with update_style (every frame using it follows), or format this text directly with format_text.',
+  },
+  {
+    keys: ['x', 'y', 'width', 'height', 'rotation'],
+    hint: 'Move, resize or rotate an existing item with edit_item (op "move", "resize" or "rotate").',
+  },
+  { keys: ['layer'], hint: 'Move an existing item to another layer with edit_item (op "layer").' },
+  {
+    keys: ['fill', 'stroke', 'strokeWeight', 'opacity'],
+    hint: 'Change the look of an existing item with set_appearance.',
+  },
+];
+
+/** Cheap edit distance, capped: only used to suggest a near miss like "aligment" -> "alignment". */
+function closeTo(bad: string, valid: string[]): string | undefined {
+  const b = bad.toLowerCase();
+  let best: string | undefined;
+  let bestScore = 3;
+  for (const v of valid) {
+    const a = v.toLowerCase();
+    if (a === b) return v;
+    let prev = Array.from({ length: a.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= b.length; i++) {
+      const row = [i];
+      for (let j = 1; j <= a.length; j++)
+        row[j] = Math.min(prev[j]! + 1, row[j - 1]! + 1, prev[j - 1]! + (b[i - 1] === a[j - 1] ? 0 : 1));
+      prev = row;
+    }
+    const score = prev[a.length]!;
+    if (score < bestScore) {
+      bestScore = score;
+      best = v;
+    }
+  }
+  return best;
+}
+
+function unknownKeyMessage(bad: readonly string[], valid: string[]): string {
+  const lines = [
+    `${bad.length === 1 ? `Unknown option "${bad[0]}"` : `Unknown options ${bad.map((k) => `"${k}"`).join(', ')}`}. This tool takes: ${valid.join(', ')}.`,
+  ];
+  for (const key of bad) {
+    const near = closeTo(key, valid);
+    if (near) lines.push(`Did you mean "${near}"?`);
+    const hint = KEY_HINTS.find((h) => h.keys.includes(key))?.hint;
+    if (hint && !valid.includes(key)) lines.push(hint);
+  }
+  return [...new Set(lines)].join(' ');
+}
+
+/**
+ * Builds a tool input schema. Same as `z.strictObject`, but tolerant of values a client stringified,
+ * and explicit about an option it does not know.
  */
 export function toolInput<T extends z.ZodRawShape>(shape: T): z.ZodObject<T, z.core.$strict> {
   const wrapped: Record<string, z.ZodType> = {};
   for (const [key, schema] of Object.entries(shape)) wrapped[key] = tolerantInput(schema as z.ZodType);
-  return z.strictObject(wrapped as unknown as T);
+  const valid = Object.keys(shape);
+  return z.strictObject(wrapped as unknown as T, {
+    error: (issue) =>
+      issue.code === 'unrecognized_keys'
+        ? unknownKeyMessage((issue as { keys: readonly string[] }).keys, valid)
+        : undefined,
+  });
+}
+
+/**
+ * The same shape with every field optional — the single-item half of a tool that also takes a list,
+ * where the required fields move into the list's own items.
+ */
+export function makeOptional<T extends z.ZodRawShape>(shape: T): { [K in keyof T]: z.ZodOptional<T[K]> } {
+  const out: Record<string, z.ZodType> = {};
+  for (const [key, schema] of Object.entries(shape)) out[key] = (schema as z.ZodType).optional();
+  return out as { [K in keyof T]: z.ZodOptional<T[K]> };
+}
+
+/** Every spec must carry a name, whichever half of the tool it arrived through. */
+export function requireNames<T extends { name?: string }>(
+  specs: T[],
+  label: string,
+): (T & { name: string })[] {
+  for (const spec of specs) if (!spec.name?.trim()) throw new Error(`Every ${label} needs a name.`);
+  return specs as (T & { name: string })[];
+}
+
+/**
+ * Lets a create_* tool take one item or a whole list of them.
+ *
+ * Setting a document up means a dozen swatches and paragraph styles, and spending one tool call on
+ * each is what makes a long build run out of turns before the layout is finished. `single` is the
+ * tool's own arguments minus `document` and the list; it counts as given when any field is set.
+ */
+export function oneOrMany<T extends object>(
+  single: T,
+  many: T[] | undefined,
+  labels: { one: string; list: string },
+): T[] {
+  const singleGiven = Object.values(single).some((v) => v !== undefined);
+  if (many !== undefined) {
+    if (singleGiven)
+      throw new Error(
+        `Give either one ${labels.one} or a "${labels.list}" list, not both — put every one of them in the list.`,
+      );
+    if (!many.length) throw new Error(`"${labels.list}" is empty; give at least one ${labels.one}.`);
+    return many;
+  }
+  if (!singleGiven)
+    throw new Error(`Give a ${labels.one} to create, or a "${labels.list}" list to create several.`);
+  return [single];
+}
+
+/**
+ * Creates every spec against the same open document and saves once. Nothing is written when one of
+ * them fails, and the half-built document is dropped from the cache so the next call re-reads it.
+ */
+export function createAll<T, R>(
+  ctx: ToolContext,
+  document: string,
+  specs: T[],
+  create: (doc: IdmlDocument, spec: T) => R,
+): { doc: IdmlDocument; results: R[] } {
+  const doc = ctx.open(document);
+  const results: R[] = [];
+  for (const [i, spec] of specs.entries()) {
+    try {
+      results.push(create(doc, spec));
+    } catch (err) {
+      ctx.forget(doc.path ?? document);
+      const where = specs.length > 1 ? ` (number ${i + 1} of ${specs.length})` : '';
+      throw new Error(`${(err as Error).message}${where}${specs.length > 1 ? '. Nothing was created.' : ''}`);
+    }
+  }
+  ctx.save(doc);
+  return { doc, results };
+}
+
+/** "Created 3 swatches: Brand Blue, Sand, Ink." / "Created swatch "Brand Blue"." */
+export function createdSummary(one: string, plural: string, names: string[]): string {
+  return names.length === 1
+    ? `Created ${one} "${names[0]}".`
+    : `Created ${names.length} ${plural}: ${names.join(', ')}.`;
 }
 
 export interface ToolResult {

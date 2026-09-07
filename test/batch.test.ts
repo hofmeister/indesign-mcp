@@ -149,20 +149,51 @@ describe('batch', () => {
     expect((items.content[0]?.text ?? '').split('\n')).toHaveLength(1);
   });
 
-  test('names a tool that does not exist, and refuses read-only ones', async () => {
+  test('names a tool that does not exist, before running anything', async () => {
     const client = await connectedClient();
     const document = docPath('bad');
     await call(client, 'new_document', { path: document, pageSize: 'A4' });
 
     const missing = await call(client, 'batch', {
-      steps: [{ tool: 'add_widget', arguments: {} }],
+      steps: [
+        {
+          tool: 'add_shape',
+          arguments: { shape: 'rectangle', document, page: 1, x: 10, y: 10, width: 40, height: 10 },
+        },
+        { tool: 'add_widget', arguments: {} },
+      ],
     });
     expect(missing.content[0]?.text ?? '').toContain('no tool called "add_widget"');
+    // The valid step before it was not run either.
+    const items = await call(client, 'list', { what: 'items', document, page: 1 });
+    expect(items.content[0]?.text ?? '').toContain('No items');
+  });
 
-    const readOnly = await call(client, 'batch', {
-      steps: [{ tool: 'list', arguments: { what: 'items', document } }],
+  test('read-only steps run and report their output', async () => {
+    const client = await connectedClient();
+    const document = docPath('readonly');
+    await call(client, 'new_document', { path: document, pageSize: 'A4' });
+
+    const r = await call(client, 'batch', {
+      steps: [
+        {
+          tool: 'add_shape',
+          arguments: {
+            shape: 'rectangle',
+            document,
+            page: 1,
+            name: 'Box',
+            x: 10,
+            y: 10,
+            width: 40,
+            height: 10,
+          },
+        },
+        { tool: 'list', arguments: { what: 'items', document, page: 1 } },
+      ],
     });
-    expect(readOnly.content[0]?.text ?? '').toContain('only reads the document');
+    expect(r.structuredContent?.failed).toBe(0);
+    expect(r.content[0]?.text ?? '').toContain('Box');
   });
 
   test('a step with bad arguments says which argument', async () => {

@@ -5,6 +5,7 @@ import type { Config } from '../config.ts';
 import { expandHome } from '../config.ts';
 import { IdmlDocument } from '../idml/document.ts';
 import type { Rect } from '../idml/geometry.ts';
+import { pinPagesPerDocument } from '../idml/pages.ts';
 import { type LengthInput, toPoints, type Unit } from '../idml/units.ts';
 
 interface CacheEntry {
@@ -74,6 +75,7 @@ export class ToolContext {
       this.deferred.set(path, doc);
       return path;
     }
+    pinPagesPerDocument(doc);
     doc.save(path);
     const st = statSync(path);
     this.cache.set(path, { doc, mtimeMs: st.mtimeMs, size: st.size });
@@ -101,6 +103,7 @@ export class ToolContext {
    */
   adopt(doc: IdmlDocument, path: string): string {
     this.deferred?.delete(path);
+    pinPagesPerDocument(doc);
     doc.save(path);
     const st = statSync(path);
     this.cache.set(path, { doc, mtimeMs: st.mtimeMs, size: st.size });

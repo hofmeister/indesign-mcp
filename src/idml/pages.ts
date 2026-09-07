@@ -187,6 +187,17 @@ export function pageForSpreadRect(pages: PageInfo[], spreadId: string, r: Rect):
 
 // ---- page count bookkeeping --------------------------------------------------------------
 
+/**
+ * PagesPerDocument is *not* the document's page count: it is the "Pages" field of InDesign's New
+ * Document dialog. On import InDesign first creates a document with that many pages and only then
+ * reads the spreads, so anything above 1 leaves that many blank pages in front of the real ones.
+ * InDesign itself always writes 1, whatever the document holds — so we do too, on every save.
+ */
+export function pinPagesPerDocument(doc: IdmlDocument): void {
+  const prefs = documentPreference(doc);
+  if (prefs.getAttribute('PagesPerDocument') !== '1') prefs.setAttribute('PagesPerDocument', '1');
+}
+
 export function updatePageCounts(doc: IdmlDocument): void {
   let total = 0;
   for (const part of doc.spreadParts()) {
@@ -196,7 +207,7 @@ export function updatePageCounts(doc: IdmlDocument): void {
     spread.setAttribute('PageCount', String(n));
     total += n;
   }
-  documentPreference(doc).setAttribute('PagesPerDocument', String(total));
+  pinPagesPerDocument(doc);
   // Keep a single section covering all pages (multi-section documents keep their first section start).
   const sections = children(doc.root, 'Section');
   if (sections.length === 1) {

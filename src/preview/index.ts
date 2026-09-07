@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { IdmlDocument } from '../idml/document.ts';
 import type { Rect } from '../idml/geometry.ts';
+import { obscuredMasterItems } from '../idml/items.ts';
 import { findPage, listPages } from '../idml/pages.ts';
 import { detectInDesign, renderWithInDesign } from './indesign.ts';
 import { svgToPng } from './png.ts';
@@ -137,6 +138,14 @@ export async function previewPage(
     };
   } else {
     result = await rasterize(renderPageSvg(doc, pageRef, options), options);
+  }
+  // Both renderers draw this correctly, which is the problem: the item is simply not visible.
+  // Saying so here catches it at a glance instead of on close inspection of the picture.
+  for (const hidden of obscuredMasterItems(doc)) {
+    if (hidden.page !== pageNumber) continue;
+    result.warnings.push(
+      `"${hidden.item.name ?? hidden.item.id}" from master ${hidden.item.onMaster} is hidden behind "${hidden.coveredBy.name ?? hidden.coveredBy.id}" — master items always sit under page items`,
+    );
   }
   if (options.save !== false) {
     const file = join(previewDir(doc), `page-${pageNumber}.png`);

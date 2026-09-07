@@ -30,9 +30,10 @@ Save as: ${file ?? 'a sensible file name'}
 
 Work like an InDesign layout designer:
 1. Check list reference_documents; if a reference fits, start from it (new_document_from_reference) or import its styles/swatches.
-2. Otherwise new_document with proper margins and bleed. Create a small set of paragraph styles (headline, subhead, body, caption) and 2–3 swatches before placing text.
-3. Lay out text frames on a grid, give every item a name, use generate_image for pictures where the brief needs them (ask me before generating more than two).
-4. Run validate_document at the end and tell me where the file is, which fonts you used and what I should check in InDesign.`,
+2. Otherwise new_document with proper margins and bleed. Before placing text, define the whole type scale in one create_paragraph_style call (pass "styles": headline, subhead, body, caption) and the whole palette in one create_swatch call (pass "swatches").
+3. Set the document up before filling it: a few named layers (edit_layers op "create" — "Background", "Images", "Text"), and the running heads, footers, folios and background rules on the master page (add_text_frame / add_shape with target master, insert_page_number for the folio). Never copy page furniture onto each page.
+4. Lay out text frames on a grid, give every item a name and a layer, use generate_image for pictures where the brief needs them (ask me before generating more than two).
+5. Run preflight_document and validate_document at the end, fix what they report, and tell me where the file is, which fonts you used and what I should check in InDesign.`,
           },
         },
       ],

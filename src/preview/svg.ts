@@ -150,6 +150,7 @@ class RenderContext {
     try {
       shaped = this.composer.shapeStory(this.doc, story, {
         pageNumber: this.pageNameFor(anyFrame),
+        lastPageNumber: this.pages.at(-1)?.name,
       });
     } catch (e) {
       this.warnings.push(`Text of story ${storyId} could not be shaped: ${(e as Error).message}`);
@@ -308,28 +309,72 @@ export function pathToSvg(paths: Path[]): string {
   return parts.join('');
 }
 
-/** Rounded-rectangle path when the item has uniform rounded corners (InDesign corner options). */
+/** Corner treatments InDesign draws on a rectangular frame. */
+const CORNERS = [
+  { option: 'TopLeftCornerOption', radius: 'TopLeftCornerRadius' },
+  { option: 'TopRightCornerOption', radius: 'TopRightCornerRadius' },
+  { option: 'BottomRightCornerOption', radius: 'BottomRightCornerRadius' },
+  { option: 'BottomLeftCornerOption', radius: 'BottomLeftCornerRadius' },
+] as const;
+
+/**
+ * Path for an item with InDesign corner options. Any rectangular frame can carry them — a text
+ * frame as much as a rectangle — and each corner has its own shape and radius.
+ */
 function cornerAdjustedPath(el: Element, paths: Path[]): string {
-  const radius = numAttr(el, 'TopLeftCornerRadius', 0);
-  const option = attr(el, 'TopLeftCornerOption');
-  if (
-    el.tagName !== 'Rectangle' ||
-    !radius ||
-    !option ||
-    option === 'None' ||
-    paths.length !== 1 ||
-    paths[0]!.points.length !== 4
-  )
-    return pathToSvg(paths);
+  if (paths.length !== 1 || paths[0]!.points.length !== 4) return pathToSvg(paths);
+  const corners = CORNERS.map(({ option, radius }) => ({
+    option: attr(el, option) ?? 'None',
+    radius: numAttr(el, radius, 0),
+  }));
+  if (!corners.some((c) => c.radius > 0 && c.option !== 'None')) return pathToSvg(paths);
   const b = anchorBounds(paths);
-  const r = Math.min(radius, b.width / 2, b.height / 2);
-  if (option === 'RoundedCorner') {
-    return `M${fmt(b.x + r)} ${fmt(b.y)}H${fmt(b.x + b.width - r)}A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(b.x + b.width)} ${fmt(b.y + r)}V${fmt(b.y + b.height - r)}A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(b.x + b.width - r)} ${fmt(b.y + b.height)}H${fmt(b.x + r)}A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(b.x)} ${fmt(b.y + b.height - r)}V${fmt(b.y + r)}A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(b.x + r)} ${fmt(b.y)}Z`;
+  const limit = Math.min(b.width / 2, b.height / 2);
+  // Corner points and the direction from each towards the middle of the rectangle.
+  const geometry = [
+    { x: b.x, y: b.y, sx: 1, sy: 1 },
+    { x: b.x + b.width, y: b.y, sx: -1, sy: 1 },
+    { x: b.x + b.width, y: b.y + b.height, sx: -1, sy: -1 },
+    { x: b.x, y: b.y + b.height, sx: 1, sy: -1 },
+  ];
+  // Each corner runs from a point on the edge before it to a point on the edge after it; the
+  // corners alternate between entering horizontally and entering vertically.
+  const horizontalFirst = [false, true, false, true];
+  const cut = corners.map((c) => (c.option === 'None' ? 0 : Math.min(c.radius, limit)));
+  const from = geometry.map((g, i) => {
+    const r = cut[i]!;
+    return horizontalFirst[i] ? { x: g.x + g.sx * r, y: g.y } : { x: g.x, y: g.y + g.sy * r };
+  });
+  const to = geometry.map((g, i) => {
+    const r = cut[i]!;
+    return horizontalFirst[i] ? { x: g.x, y: g.y + g.sy * r } : { x: g.x + g.sx * r, y: g.y };
+  });
+  const parts: string[] = [`M${fmt(to[0]!.x)} ${fmt(to[0]!.y)}`];
+  for (let i = 1; i <= 4; i++) {
+    const index = i % 4;
+    const g = geometry[index]!;
+    const r = cut[index]!;
+    const p = from[index]!;
+    const q = to[index]!;
+    parts.push(`L${fmt(p.x)} ${fmt(p.y)}`);
+    if (!r) continue;
+    switch (corners[index]!.option) {
+      case 'RoundedCorner':
+        parts.push(`A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(q.x)} ${fmt(q.y)}`);
+        break;
+      case 'InverseRoundedCorner':
+      case 'FancyCorner':
+        parts.push(`A${fmt(r)} ${fmt(r)} 0 0 0 ${fmt(q.x)} ${fmt(q.y)}`);
+        break;
+      case 'InsetCorner':
+        parts.push(`L${fmt(g.x + g.sx * r)} ${fmt(g.y + g.sy * r)}L${fmt(q.x)} ${fmt(q.y)}`);
+        break;
+      default:
+        parts.push(`L${fmt(q.x)} ${fmt(q.y)}`);
+    }
   }
-  if (option === 'BevelCorner') {
-    return `M${fmt(b.x + r)} ${fmt(b.y)}H${fmt(b.x + b.width - r)}L${fmt(b.x + b.width)} ${fmt(b.y + r)}V${fmt(b.y + b.height - r)}L${fmt(b.x + b.width - r)} ${fmt(b.y + b.height)}H${fmt(b.x + r)}L${fmt(b.x)} ${fmt(b.y + b.height - r)}V${fmt(b.y + r)}Z`;
-  }
-  return pathToSvg(paths);
+  parts.push('Z');
+  return parts.join('');
 }
 
 function strokeDash(type: string | undefined, weight: number): string | undefined {
@@ -663,7 +708,10 @@ function cellTextHeight(ctx: RenderContext, cell: Element, width: number): numbe
   const inset = cellInsets(cell);
   const shaped = ctx.composer.shapeStory(ctx.doc, cell);
   if (!shaped.glyphs.length) return inset.top + inset.bottom;
-  const composed = ctx.composer.compose(shaped.glyphs, shaped.paragraphs, cellGeometry(cell, width, 1e6));
+  // Measure against the top of a very tall box: a centred or bottom-aligned cell would otherwise
+  // push its only line into the middle of that box and report a row hundreds of points tall.
+  const geometry = { ...cellGeometry(cell, width, 1e6), verticalJustification: 'TopAlign' as const };
+  const composed = ctx.composer.compose(shaped.glyphs, shaped.paragraphs, geometry);
   const last = composed.lines.at(-1);
   return inset.top + inset.bottom + (last ? last.baseline + last.descent : 0);
 }

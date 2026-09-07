@@ -24,7 +24,9 @@ import {
   setLineStyles,
   setNestedStyles,
 } from '../idml/variables.ts';
-import { attr, type Element } from '../idml/xml.ts';
+import { attr, type Element, getProperty } from '../idml/xml.ts';
+import { fontCatalog } from '../preview/fonts.ts';
+import { withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import type { ToolRegistry } from './registry.ts';
 import { documentParam, itemParam, lengthParam, ok, pageParam, run, toolInput } from './shared.ts';
@@ -36,6 +38,52 @@ function storyOf(doc: IdmlDocument, item: string, page?: number | string): Eleme
   const story = doc.story(attr(found.element, 'ParentStory') ?? '');
   if (!story) throw new Error('That text frame has no story');
   return story;
+}
+
+/**
+ * InDesign draws the bullet in the font the list asks for and shows a missing-glyph box when that
+ * font has no such character (Helvetica Neue has no ▪). Picks a font that does have it when the
+ * caller named none, and says so either way.
+ */
+function bulletFontFor(
+  doc: IdmlDocument,
+  style: Element,
+  character: string,
+  requested: string | undefined,
+): { font: string | undefined; notes: string[] } {
+  const codePoint = character.codePointAt(0);
+  if (!codePoint) return { font: requested, notes: [] };
+  const catalog = fontCatalog();
+  const family = requested ?? getProperty(style, 'AppliedFont')?.value;
+  let has = false;
+  try {
+    const match = catalog.match(family, attr(style, 'FontStyle'));
+    has = match.face.hasGlyphForCodePoint?.(codePoint) !== false;
+  } catch {
+    return { font: requested, notes: [] };
+  }
+  if (has) return { font: requested, notes: [] };
+  const alternative = catalog.faceWithGlyph(codePoint)?.info.family;
+  if (!alternative)
+    return {
+      font: requested,
+      notes: [
+        `no font on this computer has "${character}" — InDesign will draw a missing-glyph box; try • or – instead.`,
+      ],
+    };
+  if (requested)
+    return {
+      font: requested,
+      notes: [
+        `"${requested}" has no "${character}", so InDesign will draw a missing-glyph box there. "${alternative}" has the glyph — or use • or –, which every text font carries.`,
+      ],
+    };
+  return {
+    font: alternative,
+    notes: [
+      `${family ?? 'the text font'} has no "${character}", so the bullet is set in ${alternative}. InDesign can still show an uncommon symbol as a missing-glyph box — • and – are the safe choices.`,
+    ],
+  };
 }
 
 export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): void {
@@ -56,19 +104,26 @@ export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): vo
         numberFormat: z
           .string()
           .optional()
-          .describe('Pattern, e.g. "^#." for 1. or "^#)" for 1). ^# is the number, ^t a tab.'),
+          .describe(
+            'Pattern, e.g. "^#." for 1. or "^#)" for 1). ^# is the number, ^t a tab. textAfter is appended to it.',
+          ),
         startAt: z.number().int().min(1).optional(),
         textAfter: z.string().optional().describe('What follows the bullet/number, default a tab (^t).'),
         indent: lengthParam.optional().describe('Left indent of the paragraph.'),
         bulletIndent: lengthParam.optional().describe('How far the bullet/number hangs into the margin.'),
         characterStyle: z.string().optional().describe('Character style for the bullet/number itself.'),
         font: z.string().optional().describe('Font for the bullet character.'),
+        fontStyle: z.string().optional().describe('Style of that font, e.g. "Bold" (default Regular).'),
       }),
     },
     async (args) =>
       run(() => {
         const doc = ctx.open(args.document);
         const style = resolveStyle(doc, 'ParagraphStyle', args.style);
+        const bullet =
+          args.kind === 'bullet'
+            ? bulletFontFor(doc, style, args.bulletCharacter ?? '•', args.font)
+            : { font: args.font, notes: [] as string[] };
         applyListSettings(doc, style, {
           kind: args.kind,
           bulletCharacter: args.bulletCharacter,
@@ -79,13 +134,18 @@ export function registerTypographyTools(reg: ToolRegistry, ctx: ToolContext): vo
           indent: ctx.ptOpt(args.indent),
           bulletIndent: ctx.ptOpt(args.bulletIndent),
           characterStyle: args.characterStyle,
-          font: args.font,
+          font: bullet.font,
+          fontStyle: args.fontStyle,
         });
         ctx.save(doc);
         return ok(
-          args.kind === 'none'
-            ? `"${args.style}" is no longer a list.`
-            : `"${args.style}" is now a ${args.kind === 'bullet' ? `bulleted list (${args.bulletCharacter ?? '•'})` : `numbered list (${args.numberStyle ?? 'arabic'})`}.`,
+          withNotes(
+            args.kind === 'none'
+              ? `"${args.style}" is no longer a list.`
+              : `"${args.style}" is now a ${args.kind === 'bullet' ? `bulleted list (${args.bulletCharacter ?? '•'})` : `numbered list (${args.numberStyle ?? 'arabic'})`}.`,
+            bullet.notes,
+          ),
+          { notes: bullet.notes },
         );
       }),
   );

@@ -21,7 +21,7 @@ export interface RegisteredOperation {
   name: string;
   schema: z.ZodType | undefined;
   run: AnyHandler;
-  /** Operations that only read are pointless in a batch, and are refused there. */
+  /** Read-only operations are allowed in a batch, but the pending writes are flushed first. */
   readOnly: boolean;
 }
 
@@ -101,6 +101,6 @@ export class ToolRegistry {
 
   /** Names that may appear in a batch, in registration order. */
   batchableNames(): string[] {
-    return [...this.operations.values()].filter((o) => !o.readOnly).map((o) => o.name);
+    return [...this.operations.values()].map((o) => o.name);
   }
 }

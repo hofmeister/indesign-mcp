@@ -352,6 +352,8 @@ function nextTabStop(
 
 export class Composer {
   private faceCache = new Map<string, FontMatch>();
+  /** Characters shaped with a different font because the chosen one has no glyph for them. */
+  private glyphFallbacks = new Map<string, string>();
   constructor(
     private catalog: FontCatalog,
     private styles: StyleResolver,
@@ -373,6 +375,7 @@ export class Composer {
     for (const [key, m] of this.faceCache) {
       if (m.substituted) out[key.replace('|', ' ').trim()] = m.info.family;
     }
+    for (const [key, family] of this.glyphFallbacks) out[key] = family;
     return out;
   }
 
@@ -380,7 +383,7 @@ export class Composer {
   shapeStory(
     doc: IdmlDocument,
     story: Element,
-    markers: { pageNumber?: string; sectionMarker?: string } = {},
+    markers: { pageNumber?: string; sectionMarker?: string; lastPageNumber?: string } = {},
   ): { glyphs: (ShapedGlyph | null)[]; paragraphs: TextAttrs[] } {
     const paragraphs = readStory(story);
     const glyphs: (ShapedGlyph | null)[] = [];
@@ -389,10 +392,10 @@ export class Composer {
       const pa = this.styles.paragraph(para.style);
       const pAttrs = applyElementAttrs(pa, para.attrs ? fakeElement(para.attrs) : undefined);
       paraAttrs.push(pAttrs);
-      for (const run of para.runs) glyphs.push(...this.shapeRun(resolveMarker(run, markers), pAttrs));
+      for (const run of para.runs)
+        glyphs.push(...this.shapeRun(resolveVariable(doc, resolveMarker(run, markers), markers), pAttrs));
       if (pi < paragraphs.length - 1) glyphs.push(null);
     });
-    void doc;
     return { glyphs, paragraphs: paraAttrs };
   }
 
@@ -439,10 +442,50 @@ export class Composer {
       run.attrs || run.props ? fakeElement(run.attrs ?? {}, run.props) : undefined,
     );
     const match = this.faceFor(attrs);
-    const face = match.face;
-    if (run.anchored) return [this.shapeAnchored(run.anchored, attrs, face, match)];
+    if (run.anchored) return [this.shapeAnchored(run.anchored, attrs, match.face, match)];
     const text = applyCapitalization(run.text, attrs.capitalization);
     if (!text) return [];
+    const out: ShapedGlyph[] = [];
+    // A character the font does not have would come out as .notdef — a bullet or a tick that
+    // simply vanishes from the preview. Shape those stretches with a font that does have it.
+    for (const piece of this.splitByCoverage(text, match, attrs)) {
+      out.push(...this.shapeWithFace(piece.text, piece.match, attrs, piece.at));
+    }
+    return out;
+  }
+
+  /** Splits a run's text where the chosen face stops covering it. */
+  private splitByCoverage(
+    text: string,
+    match: FontMatch,
+    attrs: TextAttrs,
+  ): { text: string; match: FontMatch; at: number }[] {
+    const pieces: { text: string; match: FontMatch; at: number }[] = [];
+    let current: { text: string; match: FontMatch; at: number } | undefined;
+    let at = 0;
+    for (const ch of text) {
+      const cp = ch.codePointAt(0)!;
+      let used = match;
+      if (!/\s/.test(ch) && match.face.hasGlyphForCodePoint?.(cp) === false) {
+        const other = this.catalog.faceWithGlyph(cp);
+        if (other) {
+          used = other;
+          this.glyphFallbacks.set(`${ch} in ${attrs.font}`.trim(), other.info.family);
+        }
+      }
+      if (current && current.match === used) current.text += ch;
+      else {
+        current = { text: ch, match: used, at };
+        pieces.push(current);
+      }
+      at += ch.length;
+    }
+    return pieces;
+  }
+
+  /** Shapes one stretch of text with one face; `at` offsets the glyphs' character indices. */
+  private shapeWithFace(text: string, match: FontMatch, attrs: TextAttrs, at: number): ShapedGlyph[] {
+    const face = match.face;
     const scale = (attrs.size / face.unitsPerEm) * (attrs.horizontalScale / 100);
     const features = attrs.kerning === 'off' ? ['-kern'] : ['kern', 'liga'];
     let glyphRun: GlyphRun;
@@ -460,9 +503,9 @@ export class Composer {
       const pos = glyphRun.positions[i]!;
       const cps = g.codePoints ?? [];
       const ch = cps.length ? String.fromCodePoint(...cps) : (text[charIndex] ?? '');
-      const idx = charIndex;
+      const idx = at + charIndex;
       charIndex += Math.max(1, ch.length);
-      const isSpace = /^[\s ]$/.test(ch) && ch !== ' ';
+      const isSpace = /^[\s ]$/.test(ch) && ch !== ' ';
       out.push({
         glyphId: g.id,
         advance: pos.xAdvance * scale + tracking,
@@ -474,8 +517,8 @@ export class Composer {
         attrs,
         fontKey,
         isSpace,
-        breakAfter: isSpace || ch === ' ' || ch === '-' || ch === '–' || ch === '­',
-        hyphenBreak: ch === '­',
+        breakAfter: isSpace || ch === ' ' || ch === '-' || ch === '–' || ch === '\u00ad',
+        hyphenBreak: ch === '\u00ad',
       });
     });
     return out;
@@ -943,6 +986,20 @@ function anchoredItemBounds(item: Element): { width: number; height: number } {
     height = Math.max(height, b.y + b.height);
   }
   return { width, height };
+}
+
+/**
+ * A text variable whose stored result is empty is one InDesign works out as it lays the page
+ * out. The last page number is the one the renderer can work out too.
+ */
+function resolveVariable(doc: IdmlDocument, run: Run, markers: { lastPageNumber?: string }): Run {
+  if (!run.variable || run.text) return run;
+  const name = run.variable.toLowerCase();
+  const variable = children(doc.root, 'TextVariable').find((v) => attr(v, 'Name')?.toLowerCase() === name);
+  if (!variable) return run;
+  if (attr(variable, 'VariableType') === 'LastPageNumberType' && markers.lastPageNumber)
+    return { ...run, text: markers.lastPageNumber };
+  return run;
 }
 
 /** Replaces a page-number or section marker with the text InDesign would show there. */

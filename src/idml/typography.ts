@@ -39,6 +39,18 @@ export interface ListSpec {
   bulletIndent?: number;
   characterStyle?: string;
   font?: string;
+  /** Style of the bullet font, e.g. "Bold"; default Regular. */
+  fontStyle?: string;
+}
+
+/**
+ * The numbering pattern InDesign stores. `textAfter` is appended to the format rather than
+ * replacing it, so `numberFormat: "^#."` with `textAfter: "^t"` yields "^#.^t".
+ */
+function numberingExpression(spec: ListSpec): string {
+  const format = spec.numberFormat ?? '^#.';
+  const after = spec.textAfter ?? '^t';
+  return after && !format.endsWith(after) ? format + after : format;
 }
 
 const NUMBER_STYLE: Record<string, string> = {
@@ -58,6 +70,7 @@ export function applyListSettings(doc: IdmlDocument, el: Element, spec: ListSpec
       'BulletChar',
       'NumberingFormat',
       'BulletsFont',
+      'BulletsFontStyle',
       'BulletsCharacterStyle',
       'NumberingCharacterStyle',
     ]) {
@@ -83,7 +96,12 @@ export function applyListSettings(doc: IdmlDocument, el: Element, spec: ListSpec
       `<BulletChar BulletCharacterType="UnicodeOnly" BulletCharacterValue="${code}"/>`,
     );
     props.appendChild(bullet);
-    if (spec.font) setProperty(el, 'BulletsFont', 'object', spec.font);
+    // InDesign writes the bullet font as a plain string (family name) plus a style;
+    // an object reference here is silently ignored and the bullet keeps the text font.
+    if (spec.font) {
+      setProperty(el, 'BulletsFont', 'string', spec.font);
+      setProperty(el, 'BulletsFontStyle', 'string', spec.fontStyle ?? 'Regular');
+    }
     if (spec.characterStyle)
       setProperty(
         el,
@@ -96,7 +114,7 @@ export function applyListSettings(doc: IdmlDocument, el: Element, spec: ListSpec
     el.setAttribute('NumberingStartAt', String(spec.startAt ?? 1));
     el.setAttribute('NumberingContinue', 'true');
     el.setAttribute('NumberingLevel', '1');
-    el.setAttribute('NumberingExpression', spec.numberFormat ?? `^#${spec.textAfter ?? '.^t'}`);
+    el.setAttribute('NumberingExpression', numberingExpression(spec));
     setProperty(el, 'NumberingFormat', 'string', NUMBER_STYLE[spec.numberStyle ?? 'arabic'] ?? 'Arabic');
     if (spec.characterStyle)
       setProperty(

@@ -3,7 +3,8 @@ import { fontCatalog } from '../preview/fonts.ts';
 import { findOversetFrames } from '../preview/svg.ts';
 import type { IdmlDocument } from './document.ts';
 import type { Rect } from './geometry.ts';
-import { listItems } from './items.ts';
+import { type ItemInfo, listItems, obscuredMasterItems } from './items.ts';
+import { listLayers } from './layers.ts';
 import { type LinkRecord, listLinks } from './links.ts';
 import { documentPageSize, listPages } from './pages.ts';
 import { fontsUsed, listSwatches, swatchElements } from './styles.ts';
@@ -114,6 +115,34 @@ function usesTransparency(doc: IdmlDocument): boolean {
       return true;
   }
   return false;
+}
+
+/**
+ * What makes two page items "the same element repeated": kind, position, size and content.
+ *
+ * Numbers are blanked out for page furniture only — a short strip near the edge, like a folio
+ * reading "Page 1 of 8", is the same element as the one reading "Page 2 of 8". A full-height text
+ * frame has to match word for word, or every body-text frame in a book would look repeated.
+ */
+function repeatSignature(item: ItemInfo, pageHeight: number): string | undefined {
+  if (!item.bounds || item.page === undefined) return undefined;
+  const furniture = item.bounds.height <= pageHeight * 0.15;
+  const text = (item.text ?? '').trim();
+  const content =
+    item.type === 'text'
+      ? furniture
+        ? text.replace(/\d+/g, '#')
+        : text
+      : (item.imagePath ?? '') + (item.fill ?? '') + (item.stroke ?? '');
+  const round = (n: number) => Math.round(n);
+  return [
+    item.type,
+    round(item.bounds.x),
+    round(item.bounds.y),
+    round(item.bounds.width),
+    round(item.bounds.height),
+    content,
+  ].join('|');
 }
 
 export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): PreflightReport {
@@ -321,6 +350,55 @@ export function preflight(doc: IdmlDocument, options: PreflightOptions = {}): Pr
         item: item.name ?? item.id,
       });
   }
+
+  // --- structure ---------------------------------------------------------------------------
+  // Not print faults: these are what makes the file painful to edit afterwards, and they are the
+  // two things a layout built page by page always gets wrong.
+  checked.push('Master pages and layers');
+  const items = listItems(doc);
+  // From two pages up: a two-page document is usually the start of a longer one, and the moment to
+  // move the furniture onto a master is before the rest of the pages are added.
+  if (pages.length >= 2) {
+    const groups = new Map<string, ItemInfo[]>();
+    for (const item of items) {
+      const key = repeatSignature(item, pages.find((p) => p.index === item.page)?.height ?? size.height);
+      if (!key) continue;
+      const group = groups.get(key);
+      if (group) group.push(item);
+      else groups.set(key, [item]);
+    }
+    for (const group of groups.values()) {
+      const onPages = [...new Set(group.map((i) => i.page))];
+      if (onPages.length < 2) continue;
+      const first = group[0]!;
+      add({
+        check: 'repeated-item',
+        severity: 'warning',
+        message: `"${first.name ?? first.id}" is repeated in the same place on ${onPages.length} pages (${onPages.join(', ')})`,
+        item: first.name ?? first.id,
+        fix: 'Running heads, footers, folios and rules belong on a master page: create_master (or use the existing one), place the item there with target master, apply_master to the pages, and delete the per-page copies — pages you add later then inherit it automatically.',
+      });
+    }
+  }
+  for (const hidden of obscuredMasterItems(doc)) {
+    add({
+      check: 'master-item-covered',
+      severity: 'warning',
+      message: `"${hidden.item.name ?? hidden.item.id}" from master ${hidden.item.onMaster} is completely covered on page ${hidden.page} by "${hidden.coveredBy.name ?? hidden.coveredBy.id}"`,
+      page: hidden.page,
+      item: hidden.item.name ?? hidden.item.id,
+      fix: 'Master items always sit under page items, so this cannot be fixed by bringing it forward: shrink the covering item, give it no fill, put the background on the master too (beneath the item), or pull the item onto the page with override_master_item.',
+    });
+  }
+
+  const layers = listLayers(doc);
+  if (layers.length === 1 && (pages.length >= 2 || items.length >= 8))
+    add({
+      check: 'single-layer',
+      severity: 'info',
+      message: `Everything is on one layer ("${layers[0]!.name}")`,
+      fix: 'Separate the work with edit_layers (op "create") — e.g. "Background", "Images", "Text" — and pass layer: when creating items, so the file can be edited a piece at a time.',
+    });
 
   checked.push('Transparency');
   if (intent === 'print' && usesTransparency(doc))

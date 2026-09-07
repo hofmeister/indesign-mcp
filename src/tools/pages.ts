@@ -233,7 +233,8 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
     'apply_master',
     {
       title: 'Apply master page',
-      description: 'Applies a master page (or "none") to the given pages.',
+      description:
+        'Applies a master page (or "none") to the given pages, so they inherit its running heads, footers, folios and grid. Pages created by new_document already carry the first master.',
       inputSchema: toolInput({
         document: documentParam,
         master: z.string(),
@@ -259,7 +260,7 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
     {
       title: 'Create master page',
       description:
-        'Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Add items to it with add_text_frame etc. using target master.',
+        'Creates a new master page (parent page) by duplicating an existing one, e.g. "B-Chapter" based on "A-Master". Use a master for everything that repeats across pages — running heads, footers, folios, background rules, the text-frame grid — then apply_master to the pages that should use it. Add items to it with add_text_frame / add_shape using target master rather than page.',
       inputSchema: toolInput({
         document: documentParam,
         prefix: z.string().max(4).describe('One-letter prefix, e.g. "B".'),
@@ -398,7 +399,8 @@ export function registerPageTools(reg: ToolRegistry, ctx: ToolContext): void {
     'create',
     {
       title: 'Create layer',
-      description: 'Creates a new layer on top of the others.',
+      description:
+        'Creates a new layer on top of the others. Separate a layout into "Background", "Images" and "Text" (plus "Guides" or "Notes" where useful) before placing items, then name the layer on each item you add.',
       inputSchema: toolInput({
         document: documentParam,
         name: z.string(),

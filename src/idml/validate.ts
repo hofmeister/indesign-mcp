@@ -164,12 +164,15 @@ export function validateDocument(doc: IdmlDocument): ValidationIssue[] {
   const pages = listPages(doc);
   const dp = children(doc.resource('Preferences'), 'DocumentPreference')[0];
   if (dp) {
-    const declared = numAttr(dp, 'PagesPerDocument', pages.length);
-    if (declared !== pages.length)
+    // PagesPerDocument is the New Document dialog's page count, not this document's. InDesign
+    // pre-creates that many pages before reading the spreads, so anything above 1 shows up as
+    // leading blank pages when the file is opened.
+    const declared = numAttr(dp, 'PagesPerDocument', 1);
+    if (declared > 1)
       push(
-        'warning',
+        'error',
         'Resources/Preferences.xml',
-        `PagesPerDocument is ${declared} but the document has ${pages.length} pages`,
+        `PagesPerDocument is ${declared}; it must be 1 or InDesign adds ${declared - 1} blank page(s) in front of the document`,
       );
   }
   for (const spread of doc.spreads()) {

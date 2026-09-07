@@ -35,7 +35,9 @@ import {
   resolveSwatch,
   styleSelf,
 } from '../../src/idml/styles.ts';
+import { createDocument } from '../../src/idml/template.ts';
 import { toPoints } from '../../src/idml/units.ts';
+import { validateDocument } from '../../src/idml/validate.ts';
 
 const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'idml');
 const load = (name = 'interview.idml') => IdmlDocument.load(join(FIXTURES, name));
@@ -65,14 +67,49 @@ describe('pages', () => {
     expect(pages[5]!.spreadId).not.toBe(pages[4]!.spreadId);
     const again = reload(doc);
     expect(listPages(again)).toHaveLength(7);
+    // Stays 1 however many pages the document has: it is the New Document default, and InDesign
+    // pre-creates that many blank pages before reading the spreads.
     expect(
       again
         .resource('Preferences')
         .getElementsByTagName('DocumentPreference')[0]!
         .getAttribute('PagesPerDocument'),
-    ).toBe('7');
+    ).toBe('1');
     expect(again.root.getElementsByTagName('Section')[0]!.getAttribute('Length')).toBe('7');
     expect(again.spreads().at(-1)!.getAttribute('PageCount')).toBe('2');
+  });
+
+  // Regression: a document that says it has more than one "new document" page makes InDesign
+  // create that many blank pages before it reads the spreads, so the real pages end up behind
+  // N-1 blanks. Every document we write must pin PagesPerDocument to 1.
+  test('never claims more than one page in PagesPerDocument', () => {
+    const perDocument = (d: IdmlDocument) =>
+      d
+        .resource('Preferences')
+        .getElementsByTagName('DocumentPreference')[0]!
+        .getAttribute('PagesPerDocument');
+    for (const pages of [1, 3, 5]) {
+      const doc = createDocument({ pageSize: 'A5', pages, margins: '12.7mm' });
+      expect(listPages(doc)).toHaveLength(pages);
+      expect(perDocument(reload(doc))).toBe('1');
+      expect(validateDocument(doc).filter((i) => /PagesPerDocument/.test(i.message))).toEqual([]);
+    }
+    // and adding pages later must not put it back
+    const doc = createDocument({ pageSize: 'A5', pages: 1, margins: '12.7mm' });
+    addPages(doc, { count: 4 });
+    expect(listPages(doc)).toHaveLength(5);
+    expect(perDocument(reload(doc))).toBe('1');
+  });
+
+  test('validate flags a document that would open with leading blank pages', () => {
+    const doc = createDocument({ pageSize: 'A5', pages: 3, margins: '12.7mm' });
+    doc
+      .resource('Preferences')
+      .getElementsByTagName('DocumentPreference')[0]!
+      .setAttribute('PagesPerDocument', '3');
+    const issue = validateDocument(doc).find((i) => /PagesPerDocument/.test(i.message));
+    expect(issue?.level).toBe('error');
+    expect(issue?.message).toMatch(/2 blank page/);
   });
 
   test('removes a page and its items', () => {

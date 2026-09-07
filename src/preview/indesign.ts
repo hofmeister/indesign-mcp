@@ -1,7 +1,7 @@
 // Optional pixel-exact renderer: if Adobe InDesign is installed on this computer, drive it through
 // its scripting interface to open the IDML and export pages as PNG. Never required.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { log } from '../log.ts';
@@ -424,18 +424,55 @@ export async function exportWithInDesign(
 ): Promise<{ app: string; files: string[] }> {
   const install = detectInDesign();
   if (!install) throw new Error('Adobe InDesign is not installed on this computer');
+  const dir = dirname(outPath);
+  const base = basename(outPath, extname(outPath));
+  const ext = extname(outPath);
+  // Image formats give one file per page: InDesign writes "doc.png", "doc2.png", "doc3.png".
+  // Note what is already there so a re-export does not report leftovers from an earlier run.
+  const before = new Map<string, number>();
+  for (const f of existingSiblings(dir, base, ext)) {
+    try {
+      before.set(f, statSync(f).mtimeMs);
+    } catch {
+      // vanished between listing and stat
+    }
+  }
   await runScript(
     install,
     fileExportScript(idmlPath, outPath, format, options),
     options.timeoutMs ?? 180_000,
   );
-  const dir = dirname(outPath);
-  const base = basename(outPath, extname(outPath));
-  const files = existsSync(outPath)
-    ? [outPath]
-    : readdirSync(dir)
-        .filter((f) => f.startsWith(base) && f.endsWith(extname(outPath)))
-        .map((f) => join(dir, f));
+  const files = existingSiblings(dir, base, ext).filter((f) => {
+    // The named target belongs to this export whenever it is there at all.
+    if (f === outPath) return true;
+    const previous = before.get(f);
+    if (previous === undefined) return true;
+    try {
+      return statSync(f).mtimeMs !== previous;
+    } catch {
+      return false;
+    }
+  });
   if (!files.length) throw new Error('InDesign produced no file');
-  return { app: install.name, files };
+  return { app: install.name, files: files.sort(comparePageOrder) };
+}
+
+/** Files InDesign could have written for `base` + `ext` in `dir`, e.g. doc.png, doc2.png. */
+function existingSiblings(dir: string, base: string, ext: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((f) => f.endsWith(ext) && /^\d*$/.test(basename(f, ext).slice(base.length)))
+    .filter((f) => basename(f, ext).startsWith(base))
+    .map((f) => join(dir, f));
+}
+
+/** "doc.png" before "doc2.png" before "doc10.png". */
+function comparePageOrder(a: string, b: string): number {
+  const n = (p: string) => Number(/(\d*)$/.exec(basename(p, extname(p)))?.[1] || '1');
+  return n(a) - n(b) || a.localeCompare(b);
 }
