@@ -6,9 +6,18 @@ import { itemSummary } from '../idml/inspect.ts';
 import { findItem, itemSpreadBounds } from '../idml/items.ts';
 import { listLayers } from '../idml/layers.ts';
 import { formatLength } from '../idml/units.ts';
-import { mimeFor, probeImage, saveImage, slugify } from '../images/files.ts';
-import { type GeneratedImage, type ImageProvider, pickSize } from '../images/provider.ts';
-import { thumbnailBase64 } from '../images/thumbnail.ts';
+import { imageDimensions, mimeFor, probeImage, saveImage, slugify } from '../images/files.ts';
+import { ImageJobs } from '../images/jobs.ts';
+import { type ImageProvider, pickSize } from '../images/provider.ts';
+import { type ImageJobResult, jobToolResult } from '../images/result.ts';
+import {
+  DEFAULT_WAIT_SECONDS,
+  generationParams,
+  jobListText,
+  runWaitForImage,
+  WAIT_FOR_IMAGE_DESCRIPTION,
+  waitForImageInput,
+} from '../images/tools.ts';
 import { checkPlacement, masterSideNotes, withNotes } from './checks.ts';
 import type { ToolContext } from './context.ts';
 import type { ToolRegistry } from './registry.ts';
@@ -49,36 +58,20 @@ const frameParams = {
   layer: z.string().optional(),
 };
 
-const generationParams = {
-  size: z
-    .string()
-    .optional()
-    .describe(
-      '"square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". Default: matches the frame, else square.',
-    ),
-  quality: z
-    .enum(['low', 'medium', 'high', 'auto'])
-    .optional()
-    .describe('Higher quality costs more and takes longer. Default auto.'),
-  transparentBackground: z
-    .boolean()
-    .optional()
-    .describe('Produce a PNG with transparent background (logos, cut-outs).'),
-  model: z
-    .string()
-    .optional()
-    .describe('OpenAI image model (default gpt-image-2). Others: gpt-image-1.5, gpt-image-1-mini.'),
-  fileName: z
-    .string()
-    .optional()
-    .describe('File name for the saved image (without extension). Default: derived from the prompt.'),
-  returnPreview: z
-    .boolean()
-    .optional()
-    .describe('Include a small preview of the image in the reply (default true).'),
+/** The document server's generation options: the shared ones, with a frame-aware size. */
+const documentGenerationParams = {
+  ...generationParams,
+  size: generationParams.size.describe(
+    '"square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". Default: matches the frame, else square.',
+  ),
 };
 
-export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider: ImageProvider): void {
+export function registerImageTools(
+  reg: ToolRegistry,
+  ctx: ToolContext,
+  provider: ImageProvider,
+  jobs: ImageJobs<ImageJobResult> = new ImageJobs<ImageJobResult>(),
+): void {
   const summarize = (doc: import('../idml/document.ts').IdmlDocument, id: string) => {
     const found = findItem(doc, id);
     const layers = new Map(listLayers(doc).map((l) => [l.id, l.name]));
@@ -134,19 +127,6 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
       { path: image, fit },
     );
     return { id: frame.getAttribute('Self')!, info, notes };
-  }
-
-  function previewContent(img: GeneratedImage, want: boolean | undefined): ToolResult['content'] {
-    if (want === false) return [];
-    const thumb = thumbnailBase64(img.bytes, img.mimeType, 512);
-    return thumb
-      ? [
-          { type: 'image', data: thumb.data, mimeType: thumb.mimeType } as unknown as {
-            type: 'text';
-            text: string;
-          },
-        ]
-      : [];
   }
 
   reg.tool(
@@ -208,11 +188,11 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
     {
       title: 'Generate image (AI)',
       description:
-        "Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Costs money per image, so confirm the prompt with the user before generating many.",
+        "Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Generation runs in the background: when the picture is not ready within waitSeconds you get a job id and collect it with wait_for_image — nothing is lost and nothing is generated twice. Costs money per image, so confirm the prompt with the user before generating many.",
       inputSchema: toolInput({
         document: documentParam,
         prompt: z.string().min(3),
-        ...generationParams,
+        ...documentGenerationParams,
         ...targetParams,
         ...frameParams,
         fit: fitParam,
@@ -233,36 +213,39 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
             sizeTarget = { width: ctx.pt(args.width), height: ctx.pt(args.height) };
         }
         const size = pickSize(model, sizeTarget, args.quality ?? 'auto');
-        const img = await provider.generate({
-          prompt: args.prompt,
-          size,
-          quality: args.quality,
-          background: args.transparentBackground ? 'transparent' : 'auto',
-          outputFormat: args.transparentBackground ? 'png' : 'png',
-          model,
+        const job = jobs.start({ kind: 'generate', prompt: args.prompt, model, size }, async () => {
+          const img = await provider.generate({
+            prompt: args.prompt,
+            size,
+            quality: args.quality,
+            background: args.transparentBackground ? 'transparent' : 'auto',
+            outputFormat: args.transparentBackground ? 'png' : 'png',
+            model,
+          });
+          const dir = ctx.linksDir(doc.path!);
+          const path = saveImage(
+            dir,
+            slugify(args.fileName ?? args.prompt),
+            img.mimeType === 'image/jpeg' ? 'jpg' : img.mimeType === 'image/webp' ? 'webp' : 'png',
+            img.bytes,
+          );
+          let placedText = '';
+          let item: Record<string, unknown> | undefined;
+          if (args.frame || (args.x !== undefined && args.y !== undefined && args.width !== undefined)) {
+            const { id } = resolvePlacement(doc, args, path, args.fit);
+            ctx.save(doc);
+            const s = summarize(doc, id);
+            item = s;
+            placedText = ` Placed in frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`;
+          }
+          return {
+            text: `Generated ${img.width}×${img.height} px image with ${img.model} → ${path}.${placedText}${img.revisedPrompt ? `\nPrompt used: ${img.revisedPrompt}` : ''}`,
+            data: { path, width: img.width, height: img.height, model: img.model, item },
+            preview: { bytes: img.bytes, mimeType: img.mimeType },
+          };
         });
-        const dir = ctx.linksDir(doc.path!);
-        const path = saveImage(
-          dir,
-          slugify(args.fileName ?? args.prompt),
-          img.mimeType === 'image/jpeg' ? 'jpg' : img.mimeType === 'image/webp' ? 'webp' : 'png',
-          img.bytes,
-        );
-        let placedText = '';
-        let item: Record<string, unknown> | undefined;
-        if (args.frame || (args.x !== undefined && args.y !== undefined && args.width !== undefined)) {
-          const { id } = resolvePlacement(doc, args, path, args.fit);
-          ctx.save(doc);
-          const s = summarize(doc, id);
-          item = s;
-          placedText = ` Placed in frame${s.name ? ` "${s.name}"` : ''} [${s.id}] ${s.position}, ${s.size}.`;
-        }
-        const result = ok(
-          `Generated ${img.width}×${img.height} px image with ${img.model} → ${path}.${placedText}${img.revisedPrompt ? `\nPrompt used: ${img.revisedPrompt}` : ''}`,
-          { path, width: img.width, height: img.height, model: img.model, item },
-        );
-        result.content.push(...previewContent(img, args.returnPreview));
-        return result;
+        const settled = await jobs.wait(job.id, (args.waitSeconds ?? DEFAULT_WAIT_SECONDS) * 1000);
+        return jobToolResult(jobs, settled, args.returnPreview);
       }),
   );
 
@@ -271,7 +254,7 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
     {
       title: 'Edit image (AI)',
       description:
-        'Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width).',
+        'Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width). Runs in the background like generate_image: collect a slow edit with wait_for_image.',
       inputSchema: toolInput({
         document: documentParam,
         prompt: z.string().min(3),
@@ -324,44 +307,80 @@ export function registerImageTools(reg: ToolRegistry, ctx: ToolContext, provider
             })()
           : undefined;
         const first = sources[0]!;
-        const dims = (require('../images/files.ts') as typeof import('../images/files.ts')).imageDimensions(
-          first.bytes,
-        );
+        const dims = imageDimensions(first.bytes);
         const size = pickSize(
           model,
           args.size ?? (dims ? { width: dims.width, height: dims.height } : undefined),
           args.quality ?? 'auto',
         );
-        const img = await provider.edit({
-          prompt: args.prompt,
-          size,
-          quality: args.quality,
-          background: args.transparentBackground ? 'transparent' : 'auto',
-          outputFormat: 'png',
-          model,
-          images: sources,
-          mask,
+        const job = jobs.start({ kind: 'edit', prompt: args.prompt, model, size }, async () => {
+          const img = await provider.edit({
+            prompt: args.prompt,
+            size,
+            quality: args.quality,
+            background: args.transparentBackground ? 'transparent' : 'auto',
+            outputFormat: 'png',
+            model,
+            images: sources,
+            mask,
+          });
+          const dir = ctx.linksDir(doc.path!);
+          const base = args.fileName ?? `${basename(first.name, extname(first.name))}-edited`;
+          const path = saveImage(dir, slugify(base), 'png', img.bytes);
+          let placedText = '';
+          let item: Record<string, unknown> | undefined;
+          const frameRef = args.frame ?? (args.replaceInFrame !== false ? sourceFrame : undefined);
+          if (frameRef || (args.x !== undefined && args.y !== undefined && args.width !== undefined)) {
+            const { id } = resolvePlacement(doc, { ...args, frame: frameRef }, path, args.fit);
+            ctx.save(doc);
+            const s = summarize(doc, id);
+            item = s;
+            placedText = ` Placed in frame${s.name ? ` "${s.name}"` : ''} [${s.id}].`;
+          }
+          return {
+            text: `Edited image saved to ${path} (${img.width}×${img.height} px, ${img.model}).${placedText}`,
+            data: { path, width: img.width, height: img.height, model: img.model, item },
+            preview: { bytes: img.bytes, mimeType: img.mimeType },
+          };
         });
-        const dir = ctx.linksDir(doc.path!);
-        const base = args.fileName ?? `${basename(first.name, extname(first.name))}-edited`;
-        const path = saveImage(dir, slugify(base), 'png', img.bytes);
-        let placedText = '';
-        let item: Record<string, unknown> | undefined;
-        const frameRef = args.frame ?? (args.replaceInFrame !== false ? sourceFrame : undefined);
-        if (frameRef || (args.x !== undefined && args.y !== undefined && args.width !== undefined)) {
-          const { id } = resolvePlacement(doc, { ...args, frame: frameRef }, path, args.fit);
-          ctx.save(doc);
-          const s = summarize(doc, id);
-          item = s;
-          placedText = ` Placed in frame${s.name ? ` "${s.name}"` : ''} [${s.id}].`;
-        }
-        const result = ok(
-          `Edited image saved to ${path} (${img.width}×${img.height} px, ${img.model}).${placedText}`,
-          { path, width: img.width, height: img.height, model: img.model, item },
-        );
-        result.content.push(...previewContent(img, args.returnPreview));
-        return result;
+        const settled = await jobs.wait(job.id, (args.waitSeconds ?? DEFAULT_WAIT_SECONDS) * 1000);
+        return jobToolResult(jobs, settled, args.returnPreview);
       }),
+  );
+
+  reg.tool(
+    'wait_for_image',
+    {
+      title: 'Wait for image (AI)',
+      description: WAIT_FOR_IMAGE_DESCRIPTION,
+      inputSchema: toolInput(waitForImageInput),
+    },
+    async (args) => run(() => runWaitForImage(jobs, args)),
+  );
+
+  reg.listing(
+    'image_jobs',
+    {
+      title: 'List image jobs',
+      description:
+        'Lists the AI image generations of this session with their id and state (running, done, error).',
+      inputSchema: toolInput({}),
+      annotations: { readOnlyHint: true },
+    },
+    async () =>
+      run(() =>
+        ok(jobListText(jobs), {
+          jobs: jobs.list().map((j) => ({
+            id: j.id,
+            status: j.status,
+            kind: j.kind,
+            prompt: j.prompt,
+            model: j.model,
+            size: j.size,
+            error: j.error,
+          })),
+        }),
+      ),
   );
 
   reg.listing(

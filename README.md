@@ -62,6 +62,7 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 - **Mistakes are caught early.** Sizes that cannot work (a frame with no width, a line that is a point, a page bigger than InDesign allows, margins with no room left for text) are refused with an explanation, and anything that lands on the pasteboard or hangs over the trim edge comes back with a note saying so.
 - **Fonts are not embedded.** Claude tells you which fonts a document uses; they must be installed on the computer that opens it in InDesign. Previews substitute missing fonts with metric-compatible ones and say so.
 - **Pictures stay linked**, like in InDesign. Generated and edited pictures are saved in a `Links` folder next to the document.
+- **Image generation runs in the background.** A picture can take minutes, longer than most MCP clients wait for an answer. `generate_image` and `edit_image` therefore wait a while (`waitSeconds`, 45 s by default) and then return a job id instead of failing; `wait_for_image` collects the picture, and can be called again as often as needed. Giving up on a wait never cancels the work or generates — or pays for — the same picture twice.
 - **Exporting**: with InDesign installed, `export_document` lets InDesign make the PDF (press-ready, colour-managed). Without it the built-in exporter writes a vector PDF with the text as outlines — fine for proofs and web use, not for a printer.
 - **Validation** runs against Adobe's own IDML schema (InDesign 2020 is bundled; newer schema versions can be added, see `schemas/idml/README.md`).
 
@@ -77,8 +78,22 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 | `INDESIGN_MCP_SCHEMA_DIR` | Extra IDML schema versions | none |
 | `INDESIGN_MCP_FONT_DIRS` | Extra font folders for previews | none |
 | `INDESIGN_MCP_DISABLE_INDESIGN` | `1` = never use an installed InDesign for previews | off |
+| `IMAGE_MCP_OUTPUT` | Folder for the standalone image server's pictures | `~/Documents/AI Images` |
+| `IMAGE_MCP_MODEL` | Its OpenAI image model | `gpt-image-2` |
 
 The `.mcpb` bundle exposes the first four as fields in Claude Desktop's extension settings.
+
+## Image generation on its own
+
+The same program also runs as a small **image-only MCP server** with no InDesign in it: `generate_image`, `edit_image`, `wait_for_image` and `list_image_jobs`, writing PNGs to a folder. Useful if you just want pictures.
+
+```sh
+indesign-mcp images                          # start it on stdio
+indesign-mcp setup --images --openai-key sk-…  # register it as "openai-images" alongside the InDesign server
+claude mcp add openai-images -e OPENAI_API_KEY=sk-… -- /path/to/indesign-mcp images
+```
+
+It uses the same models, the same size handling and the same background jobs as the tools inside the InDesign server.
 
 ## An example
 

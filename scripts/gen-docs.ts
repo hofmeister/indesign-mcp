@@ -38,7 +38,7 @@ const groups: [string, RegExp][] = [
   ],
   [
     'Pictures',
-    /^(place_image|set_image_fit|generate_image|edit_image|relink_image|embed_images|unembed_images)$/,
+    /^(place_image|set_image_fit|generate_image|edit_image|wait_for_image|relink_image|embed_images|unembed_images)$/,
   ],
   [
     'Reference documents',

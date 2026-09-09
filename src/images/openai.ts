@@ -21,7 +21,11 @@ export class OpenAIImageProvider implements ImageProvider {
 
   private getClient(): OpenAI {
     if (!this.apiKey) throw new Error(this.unavailableReason);
-    this.client ??= new OpenAI({ apiKey: this.apiKey });
+    // Image requests routinely run for minutes. The work happens in a background job, so the only
+    // thing a short client timeout would achieve is throwing away a picture that was paid for.
+    // The image endpoint answers a long request with a 500 often enough to be worth retrying: a
+    // failed request produces no picture and no charge, and the caller is waiting anyway.
+    this.client ??= new OpenAI({ apiKey: this.apiKey, timeout: 15 * 60_000, maxRetries: 3 });
     return this.client;
   }
 

@@ -1,16 +1,16 @@
 # Tools
 
-81 tools. Parameters marked with * are required. Lengths accept a number in millimetres or a string with a unit ("10mm", "0.5in", "12pt").
+82 tools. Parameters marked with * are required. Lengths accept a number in millimetres or a string with a unit ("10mm", "0.5in", "12pt").
 
 ## Everything at once
 
 ### `list`
 
-Lists one part of a document: pages, masters, layers, items, styles, swatches, fonts, hyperlinks, text_variables, images, reference_documents, links, merge_fields. Start with describe_document for an overview; use this when you want one subject in full.
+Lists one part of a document: pages, masters, layers, items, styles, swatches, fonts, hyperlinks, text_variables, image_jobs, images, reference_documents, links, merge_fields. Start with describe_document for an overview; use this when you want one subject in full.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `what` * | `pages` \| `masters` \| `layers` \| `items` \| `styles` \| `swatches` \| `fonts` \| `hyperlinks` \| `text_variables` \| `images` \| `reference_documents` \| `links` \| `merge_fields` | Which subject this is. |
+| `what` * | `pages` \| `masters` \| `layers` \| `items` \| `styles` \| `swatches` \| `fonts` \| `hyperlinks` \| `text_variables` \| `image_jobs` \| `images` \| `reference_documents` \| `links` \| `merge_fields` | Which subject this is. |
 | `document` | string | Path to the .idml file. A bare file name is looked up in the documents folder. Use ~ for your home folder. Only for pages, masters, layers, items, styles, swatches, fonts, hyperlinks, text_variables, images, links, merge_fields. |
 | `page` | integer \| string | Only for items, images. |
 | `includeMasters` | boolean | Only for items. |
@@ -708,7 +708,7 @@ Changes how a placed picture fits its frame (fill, fit, stretch, center, frame-t
 
 ### `generate_image`
 
-Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Costs money per image, so confirm the prompt with the user before generating many.
+Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Generation runs in the background: when the picture is not ready within waitSeconds you get a job id and collect it with wait_for_image — nothing is lost and nothing is generated twice. Costs money per image, so confirm the prompt with the user before generating many.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -720,6 +720,7 @@ Generates a picture with OpenAI from a text prompt, saves it in the document's L
 | `model` | string | OpenAI image model (default gpt-image-2). Others: gpt-image-1.5, gpt-image-1-mini. |
 | `fileName` | string | File name for the saved image (without extension). Default: derived from the prompt. |
 | `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
+| `waitSeconds` | number | How long to wait for the picture before returning a job id instead, in seconds (default 45, 0 returns the job id at once). Keep it under your own tool timeout: nothing is lost when the wait runs out, wait_for_image picks the job up again. |
 | `page` | integer \| string | Page for a new frame (default 1). |
 | `master` | string | Place on this master page instead. |
 | `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
@@ -734,7 +735,7 @@ Generates a picture with OpenAI from a text prompt, saves it in the document's L
 
 ### `edit_image`
 
-Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width).
+Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width). Runs in the background like generate_image: collect a slow edit with wait_for_image.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -742,12 +743,13 @@ Edits or combines existing pictures with OpenAI: describe the change in the prom
 | `prompt` * | string |  |
 | `images` * | array | Source image paths, or names/ids of frames containing pictures. |
 | `mask` | string | Path to a PNG mask (transparent = area to edit). |
-| `size` | string | "square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". Default: matches the frame, else square. |
+| `size` | string | "square", "landscape", "portrait", an aspect like "16:9" or "3:4", or exact pixels "1536x1024". |
 | `quality` | `low` \| `medium` \| `high` \| `auto` | Higher quality costs more and takes longer. Default auto. |
 | `transparentBackground` | boolean | Produce a PNG with transparent background (logos, cut-outs). |
 | `model` | string | OpenAI image model (default gpt-image-2). Others: gpt-image-1.5, gpt-image-1-mini. |
 | `fileName` | string | File name for the saved image (without extension). Default: derived from the prompt. |
 | `returnPreview` | boolean | Include a small preview of the image in the reply (default true). |
+| `waitSeconds` | number | How long to wait for the picture before returning a job id instead, in seconds (default 45, 0 returns the job id at once). Keep it under your own tool timeout: nothing is lost when the wait runs out, wait_for_image picks the job up again. |
 | `page` | integer \| string | Page for a new frame (default 1). |
 | `master` | string | Place on this master page instead. |
 | `masterPage` | integer \| string | Which page of the master to put it on: "left" (default), "right", or a 1-based number for a master with more pages. A facing-pages master has two pages, and an item on one of them only appears on the document pages of that side, so a running head belongs on both. |
@@ -760,6 +762,16 @@ Edits or combines existing pictures with OpenAI: describe the change in the prom
 | `layer` | string |  |
 | `fit` | `fill` \| `fit` \| `stretch` \| `center` \| `frame-to-content` | How the picture fits the frame: fill (default, fills the frame proportionally and crops), fit (whole picture visible), stretch, center (100 %), frame-to-content (frame takes the picture's size). |
 | `replaceInFrame` | boolean | When a source is a frame, put the result back into that frame (default true). |
+
+### `wait_for_image`
+
+Collects a picture from generate_image or edit_image that was not ready in time. Waits for the job and returns the finished image, or reports that it is still running — in which case call this again with the same id, as many times as it takes. Generation is not interrupted or restarted by waiting or by giving up on a wait.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | The job id returned by generate_image / edit_image. Default: the job still running. |
+| `waitSeconds` | number | How long to wait this time, in seconds (default 45). If it comes back still running, just call again. |
+| `returnPreview` | boolean | Include a preview of the image (default true). |
 
 ### `relink_image`
 

@@ -71,9 +71,23 @@ export async function runSetup(argv: string[]): Promise<void> {
   if (openaiKey) env.OPENAI_API_KEY = openaiKey;
   if (references) env.INDESIGN_MCP_REFERENCES = references;
   const command = binaryPath();
-  const entry = command.startsWith('bun ')
-    ? { command: 'bun', args: [command.slice(4)], env }
-    : { command, args: [] as string[], env };
+  const invocation = (extra: string[]) =>
+    command.startsWith('bun ')
+      ? { command: 'bun', args: [command.slice(4), ...extra] }
+      : { command, args: extra };
+  const entry = { ...invocation([]), env };
+
+  // The image server is the same binary started with `images`: it needs only the key and a folder.
+  const withImages = flag(argv, 'images');
+  const imagesOutput = arg(argv, 'images-output');
+  const imageEnv: Record<string, string> = {};
+  if (openaiKey) imageEnv.OPENAI_API_KEY = openaiKey;
+  if (imagesOutput) imageEnv.IMAGE_MCP_OUTPUT = imagesOutput;
+  const imageEntry = { ...invocation(['images']), env: imageEnv };
+  const servers: Record<string, typeof entry> = { indesign: entry };
+  if (withImages) servers['openai-images'] = imageEntry;
+  if (withImages && !openaiKey)
+    console.log('Note: the image server needs an OpenAI key; pass --openai-key to make it work.\n');
 
   if (platform() === 'darwin' && !command.startsWith('bun ')) {
     // Downloaded binaries carry a quarantine flag that stops Claude Desktop from launching them.
@@ -92,7 +106,7 @@ export async function runSetup(argv: string[]): Promise<void> {
         );
       }
     }
-    config.mcpServers = { ...(config.mcpServers ?? {}), indesign: entry };
+    config.mcpServers = { ...(config.mcpServers ?? {}), ...servers };
     const json = `${JSON.stringify(config, null, 2)}\n`;
     if (print) {
       console.log(`Claude Desktop (${path}):\n${json}`);
@@ -105,27 +119,20 @@ export async function runSetup(argv: string[]): Promise<void> {
     }
   }
   if (!onlyDesktop) {
-    const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
-    const cmd = [
-      'claude',
-      'mcp',
-      'add',
-      'indesign',
-      ...envArgs,
-      '--',
-      ...(entry.command === 'bun' ? ['bun', ...entry.args] : [entry.command]),
-    ];
-    const shown = cmd.map((c) => (/[\s"]/.test(c) ? JSON.stringify(c) : c)).join(' ');
-    if (print) {
-      console.log(`Claude Code:\n  ${shown}`);
-    } else {
-      const has =
-        spawnSync(platform() === 'win32' ? 'where' : 'which', ['claude'], { stdio: 'ignore' }).status === 0;
-      if (has) {
+    const hasClaude =
+      print ||
+      spawnSync(platform() === 'win32' ? 'where' : 'which', ['claude'], { stdio: 'ignore' }).status === 0;
+    for (const [name, server] of Object.entries(servers)) {
+      const envArgs = Object.entries(server.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
+      const cmd = ['claude', 'mcp', 'add', name, ...envArgs, '--', server.command, ...server.args];
+      const shown = cmd.map((c) => (/[\s"]/.test(c) ? JSON.stringify(c) : c)).join(' ');
+      if (print) {
+        console.log(`Claude Code:\n  ${shown}`);
+      } else if (hasClaude) {
         const r = spawnSync(cmd[0]!, cmd.slice(1), { stdio: 'inherit' });
         console.log(
           r.status === 0
-            ? '✔ Claude Code configured (claude mcp add indesign).'
+            ? `✔ Claude Code configured (claude mcp add ${name}).`
             : `Claude Code registration failed; run manually:\n  ${shown}`,
         );
       } else {

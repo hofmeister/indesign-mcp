@@ -27,8 +27,14 @@ class FakeProvider implements ImageProvider {
   available = true;
   defaultModel = 'fake-image-1';
   calls: (GenerateRequest | EditRequest)[] = [];
+  /** When set, no picture is returned until it resolves — a stand-in for a slow model. */
+  gate: Promise<void> | undefined;
+  /** When set, requests fail with this message. */
+  failWith: string | undefined;
   async generate(req: GenerateRequest): Promise<GeneratedImage> {
     this.calls.push(req);
+    await this.gate;
+    if (this.failWith) throw new Error(this.failWith);
     const [w, h] = (req.size === 'auto' ? '1024x1024' : req.size).split('x').map(Number) as [number, number];
     return {
       bytes: solidPng(w, h, [255, 128, 0, 255]),
@@ -41,6 +47,8 @@ class FakeProvider implements ImageProvider {
   }
   async edit(req: EditRequest): Promise<GeneratedImage> {
     this.calls.push(req);
+    await this.gate;
+    if (this.failWith) throw new Error(this.failWith);
     return {
       bytes: solidPng(256, 256, [0, 128, 255, 255]),
       mimeType: 'image/png',
@@ -208,5 +216,157 @@ describe('image tools', () => {
     const r = await c.callTool({ name: 'generate_image', arguments: { document: path, prompt: 'anything' } });
     expect(r.isError).toBe(true);
     expect((r.content as { text: string }[])[0]!.text).toContain('OPENAI_API_KEY');
+  });
+});
+
+/** A client on any server, with the same reply shredder the other suites use. */
+async function connect(server: import('@modelcontextprotocol/server').McpServer) {
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await server.connect(st);
+  const client = new Client({ name: 't', version: '0' });
+  await client.connect(ct);
+  return async (name: string, args: Record<string, unknown> = {}) => {
+    const r = await client.callTool({ name, arguments: args });
+    const content = r.content as { type: string; text?: string }[];
+    return {
+      text: content
+        .filter((c) => c.type === 'text')
+        .map((c) => c.text)
+        .join('\n'),
+      images: content.filter((c) => c.type === 'image'),
+      data: (r.structuredContent ?? {}) as Record<string, unknown>,
+      isError: Boolean(r.isError),
+    };
+  };
+}
+
+describe('image jobs', () => {
+  test('a slow generation returns a job id and wait_for_image collects it', async () => {
+    let release!: () => void;
+    const provider = new FakeProvider();
+    provider.gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-job-'));
+    const call = await connect(
+      createServer(loadConfig({ INDESIGN_MCP_DOCUMENTS: dir }), { imageProvider: provider }),
+    );
+    const doc = (await call('new_document', { path: 'jobs', pageSize: 'A4' })).data.path as string;
+
+    const started = await call('generate_image', {
+      document: doc,
+      prompt: 'A slow horse',
+      waitSeconds: 0,
+      page: 1,
+      x: 10,
+      y: 10,
+      width: 60,
+      name: 'Horse',
+    });
+    expect(started.isError).toBe(false);
+    expect(started.data.status).toBe('running');
+    const id = started.data.jobId as string;
+    expect(id).toBeTruthy();
+    expect(started.text).toContain('wait_for_image');
+
+    // Still running: the tool says so instead of failing, and the job survives the wait.
+    const early = await call('wait_for_image', { id, waitSeconds: 0 });
+    expect(early.isError).toBe(false);
+    expect(early.data.status).toBe('running');
+    expect((await call('list', { what: 'image_jobs' })).text).toContain('running');
+
+    release();
+    const done = await call('wait_for_image', { id });
+    expect(done.isError).toBe(false);
+    expect(done.data.status).toBe('done');
+    expect(existsSync(done.data.path as string)).toBe(true);
+    expect(done.images.length).toBe(1);
+    expect(provider.calls).toHaveLength(1);
+    // The placement the generating call asked for happened when the picture arrived.
+    expect(listItems(IdmlDocument.load(doc)).filter((i) => i.name === 'Horse')).toHaveLength(1);
+    // Collecting twice is harmless: the result is kept, not regenerated.
+    const again = await call('wait_for_image', { id });
+    expect(again.data.path).toBe(done.data.path);
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  test('a failed generation is reported once, by whoever collects it', async () => {
+    const provider = new FakeProvider();
+    provider.failWith = 'OpenAI rate limit or quota reached (429).';
+    const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-job-'));
+    const call = await connect(
+      createServer(loadConfig({ INDESIGN_MCP_DOCUMENTS: dir }), { imageProvider: provider }),
+    );
+    const doc = (await call('new_document', { path: 'fails', pageSize: 'A4' })).data.path as string;
+    const r = await call('generate_image', { document: doc, prompt: 'A doomed horse' });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('429');
+  });
+
+  test('wait_for_image without an id takes the job that is running', async () => {
+    let release!: () => void;
+    const provider = new FakeProvider();
+    provider.gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'indesign-mcp-job-'));
+    const call = await connect(
+      createServer(loadConfig({ INDESIGN_MCP_DOCUMENTS: dir }), { imageProvider: provider }),
+    );
+    const doc = (await call('new_document', { path: 'bare', pageSize: 'A4' })).data.path as string;
+    const started = await call('generate_image', { document: doc, prompt: 'A horse', waitSeconds: 0 });
+    release();
+    const done = await call('wait_for_image', {});
+    expect(done.data.jobId).toBe(started.data.jobId);
+    expect(done.data.status).toBe('done');
+  });
+});
+
+describe('standalone image server', () => {
+  test('generates, edits and waits without any document', async () => {
+    const { createImageServer, loadImageConfig } = await import('../src/images/server.ts');
+    let release!: () => void;
+    const provider = new FakeProvider();
+    const out = mkdtempSync(join(tmpdir(), 'image-mcp-out-'));
+    const call = await connect(
+      createImageServer(loadImageConfig({ OPENAI_API_KEY: 'k', IMAGE_MCP_OUTPUT: out }), {
+        imageProvider: provider,
+      }),
+    );
+    const info = await call('server_info');
+    expect(info.data.outputDir).toBe(out);
+
+    let r = await call('generate_image', { prompt: 'A red bicycle', size: '16:9' });
+    expect(r.isError).toBe(false);
+    expect(r.data.status).toBe('done');
+    const path = r.data.path as string;
+    expect(existsSync(path)).toBe(true);
+    expect(path.startsWith(out)).toBe(true);
+    expect(r.images.length).toBe(1);
+
+    r = await call('edit_image', { prompt: 'make it night', images: [path], returnPreview: false });
+    expect(r.isError).toBe(false);
+    expect(existsSync(r.data.path as string)).toBe(true);
+    expect(r.images.length).toBe(0);
+    expect((provider.calls.at(-1) as EditRequest).images).toHaveLength(1);
+
+    provider.gate = new Promise<void>((res) => {
+      release = res;
+    });
+    const started = await call('generate_image', { prompt: 'A slow bicycle', waitSeconds: 0 });
+    expect(started.data.status).toBe('running');
+    expect((await call('list_image_jobs')).text).toContain(started.data.jobId as string);
+    release();
+    const done = await call('wait_for_image', { id: started.data.jobId as string });
+    expect(done.data.status).toBe('done');
+    expect(existsSync(done.data.path as string)).toBe(true);
+  });
+
+  test('reports a missing API key nicely', async () => {
+    const { createImageServer, loadImageConfig } = await import('../src/images/server.ts');
+    const call = await connect(createImageServer(loadImageConfig({ OPENAI_API_KEY: '' })));
+    const r = await call('generate_image', { prompt: 'anything' });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('OPENAI_API_KEY');
   });
 });

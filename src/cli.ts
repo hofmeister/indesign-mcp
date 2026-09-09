@@ -9,10 +9,13 @@ const USAGE = `indesign-mcp ${VERSION} — Adobe InDesign (IDML) tools for Claud
 
 Usage:
   indesign-mcp                 Start the MCP server on stdio (this is what Claude runs)
+  indesign-mcp images          Start only the OpenAI image server on stdio (no InDesign)
   indesign-mcp setup           Register the server with Claude Desktop and/or Claude Code
       --openai-key KEY           OpenAI API key for image generation (optional)
       --documents DIR            Folder for new documents (default ~/Documents/InDesign MCP)
       --references DIR           Folder with your own reference .idml files (optional)
+      --images                   Also register the standalone image server ("openai-images")
+      --images-output DIR        Folder for its pictures (default ~/Documents/AI Images)
       --claude-desktop           Only configure Claude Desktop
       --claude-code              Only configure Claude Code
       --print                    Show the configuration instead of writing it
@@ -28,6 +31,13 @@ async function main(argv: string[]): Promise<void> {
       const server = createServer();
       await server.connect(new StdioServerTransport());
       log.info(`indesign-mcp ${VERSION} running on stdio`);
+      return;
+    }
+    case 'images': {
+      const { createImageServer } = await import('./images/server.ts');
+      const server = createImageServer();
+      await server.connect(new StdioServerTransport());
+      log.info(`openai-image-mcp ${VERSION} running on stdio`);
       return;
     }
     case '--version':
