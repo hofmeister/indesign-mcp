@@ -17,6 +17,48 @@ interface ToolConfig<T extends z.ZodType> {
   annotations?: Record<string, unknown>;
 }
 
+/**
+ * Write tools that delete or overwrite existing content, or files outside the document. Clients
+ * treat `destructiveHint` as a cue to confirm with the user first; every other write tool only
+ * adds to or restyles the open document.
+ */
+const DESTRUCTIVE_TOOLS = new Set([
+  'save_document_as',
+  'set_text',
+  'find_and_replace',
+  'insert_special_characters',
+  'thread_text_frames',
+  'edit_table_structure',
+  'merge_table_cells',
+  'delete_text_variable',
+  'relink_image',
+  'unembed_images',
+  'package_document',
+  'export_document',
+  'edit_item',
+  'edit_pages',
+  'edit_masters',
+  'edit_layers',
+  'batch',
+]);
+
+/** Tools that reach a service outside this computer. */
+const OPEN_WORLD_TOOLS = new Set(['generate_image', 'edit_image', 'wait_for_image']);
+
+/**
+ * Every tool declares whether it only reads; a write tool that does not say otherwise gets its
+ * `destructiveHint` from DESTRUCTIVE_TOOLS.
+ */
+function withDefaultAnnotations(name: string, annotations: Record<string, unknown> | undefined) {
+  if (annotations?.readOnlyHint === true) return annotations;
+  return {
+    readOnlyHint: false,
+    destructiveHint: DESTRUCTIVE_TOOLS.has(name),
+    ...(OPEN_WORLD_TOOLS.has(name) ? { openWorldHint: true } : {}),
+    ...annotations,
+  };
+}
+
 export interface RegisteredOperation {
   name: string;
   schema: z.ZodType | undefined;
@@ -45,7 +87,8 @@ export class ToolRegistry {
     config: ToolConfig<T>,
     handler: (args: z.infer<T>) => ToolResult | Promise<ToolResult>,
   ): void {
-    this.server.registerTool(name, config as never, handler as never);
+    const annotations = withDefaultAnnotations(name, config.annotations);
+    this.server.registerTool(name, { ...config, annotations } as never, handler as never);
     this.operations.set(name, {
       name,
       schema: config.inputSchema,

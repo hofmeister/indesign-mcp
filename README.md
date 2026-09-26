@@ -2,7 +2,9 @@
 
 Create and edit **Adobe InDesign documents from Claude** — pages, master pages, text frames with paragraph and character styles, swatches, layers, placed pictures and AI-generated images — and look at the result as a picture before you open it in InDesign.
 
-It is a single program with nothing else to install. It works on the open **IDML** format that InDesign opens with *File › Open* (and exports with *File › Export › Adobe InDesign Markup*).
+This is a community project. It is not made, endorsed or supported by Adobe; you do not need InDesign to use it, but it uses InDesign for previews and PDFs when it is installed.
+
+It works on the open **IDML** format that InDesign opens with *File › Open* (and exports with *File › Export › Adobe InDesign Markup*).
 
 ```
 You:     Make an A5 flyer called "summer-sale" for our bakery: a big headline, a short
@@ -13,7 +15,25 @@ Claude:  (creates the document, styles and swatches, lays out the frames, genera
 
 ## Install
 
-### Claude Desktop (recommended, one click)
+### Claude plugin (Claude Code and Cowork)
+
+Requires [Bun](https://bun.sh) 1.3 or newer on your `PATH`; the plugin runs the server from the TypeScript source in this repository with Bun.
+
+```sh
+claude plugin marketplace add hofmeister/indesign-mcp
+claude plugin install indesign-mcp@indesign-mcp
+```
+
+Claude Code installs the dependencies from `bun.lock` when you install the plugin (`bun install --frozen-lockfile --ignore-scripts`) and then asks for five settings, all optional:
+
+- **OpenAI API key** — only needed to *generate or edit pictures*; stored in your system's secure credential store.
+- **Documents folder** — where bare file names are saved (default `~/Documents/InDesign MCP`).
+- **Reference documents folder** — your own `.idml` exports that Claude may borrow styles, colours and master pages from.
+- **Default unit** (`mm`, `cm`, `in`, `pt`) and **OpenAI image model**.
+
+To try a working copy, run `claude --plugin-dir .` in the repository, and `claude plugin validate .` before you push.
+
+### Claude Desktop (one click)
 
 1. Go to the [latest release](../../releases/latest).
 2. Download the `.mcpb` file for your computer:
@@ -81,7 +101,7 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 | `IMAGE_MCP_OUTPUT` | Folder for the standalone image server's pictures | `~/Documents/AI Images` |
 | `IMAGE_MCP_MODEL` | Its OpenAI image model | `gpt-image-2` |
 
-The `.mcpb` bundle exposes the first four as fields in Claude Desktop's extension settings.
+The `.mcpb` bundle exposes the first four as fields in Claude Desktop's extension settings, and the Claude plugin asks for the first four plus `INDESIGN_MCP_DEFAULT_UNIT`.
 
 ## Image generation on its own
 
@@ -130,7 +150,7 @@ Layout: `src/idml` (IDML package, XML, pages, items, stories, styles, images, va
 
 CI runs lint, type check, tests, cross-compiles every target and smoke-tests the binaries on Linux, macOS and Windows for every pull request.
 
-To publish a release, run the **Release** workflow from the Actions tab and pick `patch`, `minor` or `major`. It works off `master`: the tests run first, then the new version is written to `package.json`, committed and tagged, and the executables, the `.mcpb` bundles and the GitHub Release are built from that commit. The version counts up from the newest `vX.Y.Z` tag; with no tags yet, the version already in `package.json` is released as it stands and the choice is ignored.
+To publish a release, run the **Release** workflow from the Actions tab and pick `patch`, `minor` or `major`. It works off `master`: the tests run first, then the new version is written to `package.json` and `.claude-plugin/plugin.json`, committed and tagged, and the executables, the `.mcpb` bundles and the GitHub Release are built from that commit. The version counts up from the newest `vX.Y.Z` tag; with no tags yet, the version already in `package.json` is released as it stands and the choice is ignored.
 
 Pushing a tag `vX.Y.Z` that matches `package.json` still works and releases the commit the tag points at.
 
@@ -142,6 +162,21 @@ If the repository secrets `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`,
 - Add the IDML schema of your InDesign version (`schemas/idml/README.md`) for exact validation.
 - Open documents Claude produced in InDesign and go through [docs/manual-checklist.md](docs/manual-checklist.md); report anything InDesign complains about.
 
+## Privacy
+
+The server runs on your computer. It has no server of its own, collects no analytics or telemetry, and sends nothing to its author or to Anthropic.
+
+- **What it sends, and where:** only `generate_image` and `edit_image` use the network. They send your picture prompt, and for `edit_image` the pictures and masks you pass, to the OpenAI Images API (`api.openai.com`) with your own OpenAI API key. Without a key those tools are off and nothing leaves your computer. `wait_for_image` only collects a picture that is already being made.
+- **What it runs:** when Adobe InDesign is installed, previews and PDF exports ask it to open the document, through `osascript` on macOS or `cscript` on Windows. The server starts nothing else. (The `setup` command, which the plugin does not use, also runs `claude mcp add` and, on macOS, `xattr` to clear the download quarantine flag.)
+- **What it stores:** the documents you create and edit, pictures it generates (in a `Links` folder next to the document), previews and exports — all in the folders you choose, by default `~/Documents/InDesign MCP`. It keeps no other files, caches or logs apart from short-lived scripts in the system temp folder when it drives InDesign; diagnostics go to the MCP client's log on stderr. The API key is kept by Claude Code in your system's secure credential store and held only in memory while the server runs.
+- **Third parties:** OpenAI receives the prompts and pictures above and handles them under the [OpenAI privacy policy](https://openai.com/policies/privacy-policy) and API data-usage terms. Tool results go back to Claude as part of your conversation, where Anthropic's policies apply.
+- **Retention:** your documents and pictures stay until you delete them. Background image jobs live in memory and are gone when the server stops.
+- **Contact:** open an issue at [github.com/hofmeister/indesign-mcp/issues](https://github.com/hofmeister/indesign-mcp/issues) for questions about privacy or security.
+
+## Support
+
+Report bugs and ask questions at [github.com/hofmeister/indesign-mcp/issues](https://github.com/hofmeister/indesign-mcp/issues).
+
 ## License
 
-MIT. Bundled third-party material: IDML schemas via transpect (BSD-2-Clause), reference fixtures from SimpleIDML (BSD), fonts Arimo/Tinos/Cousine (SIL OFL 1.1).
+MIT — see [LICENSE](LICENSE). Bundled third-party material: IDML schemas via transpect (BSD-2-Clause), reference fixtures from SimpleIDML (BSD), fonts Arimo/Tinos/Cousine (SIL OFL 1.1).

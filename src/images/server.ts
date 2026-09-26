@@ -126,6 +126,7 @@ export function createImageServer(
         ...generationParams,
         outputDir: outputParam,
       }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (args) =>
       run(async () => {
@@ -172,6 +173,7 @@ export function createImageServer(
         ...generationParams,
         outputDir: outputParam,
       }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (args) =>
       run(async () => {
@@ -217,6 +219,7 @@ export function createImageServer(
       title: 'Wait for image (AI)',
       description: WAIT_FOR_IMAGE_DESCRIPTION,
       inputSchema: toolInput(waitForImageInput),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (args) => run(() => runWaitForImage(jobs, args)),
   );

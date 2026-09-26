@@ -1,0 +1,17 @@
+{
+  "name": "indesign-mcp",
+  "owner": {
+    "name": "Henrik Hofmeister",
+    "url": "https://github.com/hofmeister"
+  },
+  "metadata": {
+    "description": "InDesign (IDML) document creation and editing for Claude."
+  },
+  "plugins": [
+    {
+      "name": "indesign-mcp",
+      "source": "./",
+      "description": "Create and edit InDesign documents (IDML) with page previews and AI-generated images."
+    }
+  ]
+}
