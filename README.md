@@ -57,6 +57,13 @@ To try a working copy, run `claude --plugin-dir .` in the repository, and `claud
    `setup` asks for your OpenAI key (optional) and writes the configuration for you. On macOS it also removes the download quarantine flag so Claude can start the program. You can also run it non-interactively:
    `indesign-mcp setup --openai-key sk-… --references ~/Documents/InDesign-References`.
 
+## Example prompts
+
+- "Make an A5 flyer called `summer-sale` for our bakery: a big headline, a short paragraph, a photo placeholder and our address at the bottom. Warm colours. Show me a preview."
+- "Open `annual-report.idml`, check it for overset text, missing fonts and low-resolution pictures, and fix what you can."
+- "Create a 12-page A4 magazine template with a master page that has running headers and page numbers, three columns, and paragraph styles for headline, standfirst, body and captions."
+- "Fill the `name-badge.idml` template with one page per row of `attendees.csv`, then export it as a PDF."
+
 ## What Claude can do with it
 
 | Area | Tools |
@@ -175,7 +182,7 @@ The server runs on your computer. It has no server of its own, collects no analy
 
 ## Support
 
-Report bugs and ask questions at [github.com/hofmeister/indesign-mcp/issues](https://github.com/hofmeister/indesign-mcp/issues).
+Report bugs and ask questions at [github.com/hofmeister/indesign-mcp/issues](https://github.com/hofmeister/indesign-mcp/issues). Report security vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

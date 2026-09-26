@@ -11,6 +11,8 @@
   "homepage": "https://github.com/hofmeister/indesign-mcp#readme",
   "repository": "https://github.com/hofmeister/indesign-mcp",
   "license": "MIT",
+  "privacyPolicyUrl": "https://github.com/hofmeister/indesign-mcp#privacy",
+  "supportUrl": "https://github.com/hofmeister/indesign-mcp/issues",
   "keywords": [
     "indesign",
     "idml",
