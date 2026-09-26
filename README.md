@@ -26,10 +26,12 @@ claude plugin install indesign-mcp@indesign-mcp
 
 Claude Code installs the dependencies from `bun.lock` when you install the plugin (`bun install --frozen-lockfile --ignore-scripts`) and then asks for five settings, all optional:
 
-- **OpenAI API key** — only needed to *generate or edit pictures*; stored in your system's secure credential store.
+- **OpenAI API key** — only needed to *generate or edit pictures for your layouts*; stored in your system's secure credential store.
 - **Documents folder** — where bare file names are saved (default `~/Documents/InDesign MCP`).
 - **Reference documents folder** — your own `.idml` exports that Claude may borrow styles, colours and master pages from.
 - **Default unit** (`mm`, `cm`, `in`, `pt`) and **OpenAI image model**.
+
+The plugin runs the InDesign server only. Its picture tools make pictures for the document being designed and place them in the layout; the standalone image server described in [Image generation on its own](#image-generation-on-its-own) is not part of the plugin.
 
 To try a working copy, run `claude --plugin-dir .` in the repository, and `claude plugin validate .` before you push.
 
@@ -111,6 +113,8 @@ The full list with parameters is in [docs/tools.md](docs/tools.md). Three prompt
 The `.mcpb` bundle exposes the first four as fields in Claude Desktop's extension settings, and the Claude plugin asks for the first four plus `INDESIGN_MCP_DEFAULT_UNIT`.
 
 ## Image generation on its own
+
+*Not part of the Claude plugin.*
 
 The same program also runs as a small **image-only MCP server** with no InDesign in it: `generate_image`, `edit_image`, `wait_for_image` and `list_image_jobs`, writing PNGs to a folder. Useful if you just want pictures.
 

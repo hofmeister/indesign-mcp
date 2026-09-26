@@ -708,7 +708,7 @@ Changes how a placed picture fits its frame (fill, fit, stretch, center, frame-t
 
 ### `generate_image`
 
-Generates a picture with OpenAI from a text prompt, saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Generation runs in the background: when the picture is not ready within waitSeconds you get a job id and collect it with wait_for_image — nothing is lost and nothing is generated twice. Costs money per image, so confirm the prompt with the user before generating many.
+Generates a picture for this document's layout (a photo, illustration or background for a page) with OpenAI from a text prompt. Use it only for pictures that belong in the document, not as a general-purpose image generator. Saves it in the document's Links folder and optionally places it: give x/y/width for a new frame or frame for an existing one. Without placement it only saves the file. Generation runs in the background: when the picture is not ready within waitSeconds you get a job id and collect it with wait_for_image — nothing is lost and nothing is generated twice. Costs money per image, so confirm the prompt with the user before generating many.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -735,7 +735,7 @@ Generates a picture with OpenAI from a text prompt, saves it in the document's L
 
 ### `edit_image`
 
-Edits or combines existing pictures with OpenAI: describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width). Runs in the background like generate_image: collect a slow edit with wait_for_image.
+Edits or combines pictures for this document's layout with OpenAI (for example to extend a background to the bleed, remove a distraction or match a colour scheme); use it only for pictures that belong in the document. Describe the change in the prompt, pass one or more source images (file paths or frame names whose picture should be used) and optionally a mask PNG whose transparent areas mark what to change. Saves the result to the Links folder and optionally places it (frame / x,y,width). Runs in the background like generate_image: collect a slow edit with wait_for_image.
 
 | Parameter | Type | Description |
 |---|---|---|
