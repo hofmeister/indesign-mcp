@@ -11,7 +11,14 @@
   "homepage": "https://github.com/hofmeister/indesign-mcp#readme",
   "repository": "https://github.com/hofmeister/indesign-mcp",
   "license": "MIT",
-  "keywords": ["indesign", "idml", "desktop-publishing", "layout", "print", "design"],
+  "keywords": [
+    "indesign",
+    "idml",
+    "desktop-publishing",
+    "layout",
+    "print",
+    "design"
+  ],
   "userConfig": {
     "openai_api_key": {
       "type": "string",
@@ -32,15 +39,13 @@
     "default_unit": {
       "type": "string",
       "title": "Default unit",
-      "description": "Unit for measurements given as bare numbers.",
-      "options": ["mm", "cm", "in", "pt"],
+      "description": "Unit for measurements given as bare numbers: mm (default), cm, in or pt.",
       "default": "mm"
     },
     "image_model": {
       "type": "string",
       "title": "OpenAI image model",
-      "description": "Model used by generate_image and edit_image.",
-      "options": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1-mini"],
+      "description": "OpenAI model used by generate_image and edit_image: gpt-image-2 (default), gpt-image-1.5 or gpt-image-1-mini.",
       "default": "gpt-image-2"
     }
   }
