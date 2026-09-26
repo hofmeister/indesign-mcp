@@ -20,7 +20,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const validUnits: Unit[] = ['mm', 'cm', 'in', 'pt', 'px', 'p'];
   return {
     unit: (validUnits as string[]).includes(unit) ? (unit as Unit) : 'mm',
-    documentsDir: expandHome(env.INDESIGN_MCP_DOCUMENTS ?? join(homedir(), 'Documents', 'InDesign MCP')),
+    documentsDir: expandHome(
+      env.INDESIGN_MCP_DOCUMENTS?.trim() || join(homedir(), 'Documents', 'InDesign MCP'),
+    ),
     referenceDirs: (env.INDESIGN_MCP_REFERENCES ?? '')
       .split(/[;:]/)
       .map((s) => s.trim())
@@ -28,7 +30,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map(expandHome),
     openaiApiKey: env.OPENAI_API_KEY?.trim() || undefined,
     imageModel: env.INDESIGN_MCP_IMAGE_MODEL?.trim() || 'gpt-image-2',
-    schemaDir: env.INDESIGN_MCP_SCHEMA_DIR ? expandHome(env.INDESIGN_MCP_SCHEMA_DIR) : undefined,
+    schemaDir: env.INDESIGN_MCP_SCHEMA_DIR?.trim()
+      ? expandHome(env.INDESIGN_MCP_SCHEMA_DIR.trim())
+      : undefined,
   };
 }
 

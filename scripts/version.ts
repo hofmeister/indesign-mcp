@@ -71,9 +71,12 @@ if (import.meta.main) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
   const plan = planRelease(gitTags(), pkg.version, bumpArg);
   if (args.includes('--write') && pkg.version !== plan.version) {
-    // keep the file's formatting: only the version line changes
-    const text = readFileSync(pkgPath, 'utf8');
-    writeFileSync(pkgPath, text.replace(/("version"\s*:\s*")[^"]+(")/, `$1${plan.version}$2`));
+    // keep the files' formatting: only the version line changes. The plugin manifest carries the
+    // same version so Claude Code picks up each release.
+    for (const path of [pkgPath, join(import.meta.dir, '..', '.claude-plugin', 'plugin.json')]) {
+      const text = readFileSync(path, 'utf8');
+      writeFileSync(path, text.replace(/("version"\s*:\s*")[^"]+(")/, `$1${plan.version}$2`));
+    }
   }
   if (args.includes('--github') && process.env.GITHUB_OUTPUT) {
     const out = [

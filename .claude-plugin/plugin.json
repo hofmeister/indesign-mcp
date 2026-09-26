@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "indesign-mcp",
+  "displayName": "InDesign Documents (IDML)",
+  "version": "0.4.0",
+  "description": "Create and edit InDesign documents (IDML) with Claude: pages, master pages, styles, text, tables, pictures and AI-generated images, with page previews before you open the file in InDesign. Community project, not affiliated with Adobe.",
+  "author": {
+    "name": "Henrik Hofmeister",
+    "url": "https://github.com/hofmeister"
+  },
+  "homepage": "https://github.com/hofmeister/indesign-mcp#readme",
+  "repository": "https://github.com/hofmeister/indesign-mcp",
+  "license": "MIT",
+  "keywords": ["indesign", "idml", "desktop-publishing", "layout", "print", "design"],
+  "userConfig": {
+    "openai_api_key": {
+      "type": "string",
+      "title": "OpenAI API key (optional)",
+      "description": "Only needed to generate or edit pictures with OpenAI. Leave empty to turn image generation off. OpenAI bills each picture to this key.",
+      "sensitive": true
+    },
+    "documents_dir": {
+      "type": "directory",
+      "title": "Documents folder (optional)",
+      "description": "Where documents given by bare file name are saved. Empty means ~/Documents/InDesign MCP."
+    },
+    "references_dir": {
+      "type": "directory",
+      "title": "Reference documents folder (optional)",
+      "description": "A folder with your own .idml exports that Claude may borrow styles, colours and master pages from."
+    },
+    "default_unit": {
+      "type": "string",
+      "title": "Default unit",
+      "description": "Unit for measurements given as bare numbers.",
+      "options": ["mm", "cm", "in", "pt"],
+      "default": "mm"
+    },
+    "image_model": {
+      "type": "string",
+      "title": "OpenAI image model",
+      "description": "Model used by generate_image and edit_image.",
+      "options": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1-mini"],
+      "default": "gpt-image-2"
+    }
+  }
+}
