@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { loadConfig, splitPathList } from '../src/config.ts';
 import { createTextFrame, findItem } from '../src/idml/items.ts';
 import { isFacingPages, layoutMasterSpread } from '../src/idml/pages.ts';
 import {
@@ -18,6 +19,7 @@ import { createDocument } from '../src/idml/template.ts';
 import { applyListSettings } from '../src/idml/typography.ts';
 import { validateDocument } from '../src/idml/validate.ts';
 import { attr, children, type Element, firstChild, getProperty } from '../src/idml/xml.ts';
+import { loadImageConfig } from '../src/images/server.ts';
 import { fontCatalog } from '../src/preview/fonts.ts';
 import { createServer } from '../src/server.ts';
 
@@ -1429,5 +1431,32 @@ describe('the order elements go into a document', () => {
     const validated = await call(client, 'validate_document', { document });
     const text = validated.content[0]?.text ?? '';
     expect(text).not.toContain('is not allowed here');
+  });
+});
+
+describe('settings from Claude Desktop', () => {
+  test('an unsubstituted ${user_config.*} placeholder counts as unset', () => {
+    const config = loadConfig({
+      OPENAI_API_KEY: '${user_config.openai_api_key}',
+      INDESIGN_MCP_REFERENCES: '${user_config.references_folder}',
+      INDESIGN_MCP_DOCUMENTS: '${user_config.documents_folder}',
+      INDESIGN_MCP_IMAGE_MODEL: '${user_config.image_model}',
+    });
+    expect(config.openaiApiKey).toBeUndefined();
+    expect(config.referenceDirs).toEqual([]);
+    expect(config.documentsDir.endsWith(join('Documents', 'InDesign MCP'))).toBe(true);
+    expect(config.imageModel).toBe('gpt-image-2');
+    expect(loadImageConfig({ OPENAI_API_KEY: '${user_config.openai_api_key}' }).apiKey).toBeUndefined();
+  });
+
+  test('real values pass through, trimmed', () => {
+    const config = loadConfig({ OPENAI_API_KEY: ' sk-test ', INDESIGN_MCP_REFERENCES: '/a;/b' });
+    expect(config.openaiApiKey).toBe('sk-test');
+    expect(config.referenceDirs).toEqual(['/a', '/b']);
+  });
+
+  test('Windows folder lists keep their drive letters', () => {
+    expect(splitPathList('C:\\Refs;D:\\More', 'win32')).toEqual(['C:\\Refs', 'D:\\More']);
+    expect(splitPathList('/a:/b;/c', 'darwin')).toEqual(['/a', '/b', '/c']);
   });
 });

@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
-import { expandHome } from '../config.ts';
+import { expandHome, setting } from '../config.ts';
 import { ok, run, toolInput } from '../tools/shared.ts';
 import { VERSION } from '../version.ts';
 import { imageDimensions, mimeFor, saveImage, slugify } from './files.ts';
@@ -43,9 +43,9 @@ export interface ImageServerConfig {
 
 export function loadImageConfig(env: NodeJS.ProcessEnv = process.env): ImageServerConfig {
   return {
-    apiKey: env.OPENAI_API_KEY?.trim() || undefined,
-    model: (env.IMAGE_MCP_MODEL ?? env.INDESIGN_MCP_IMAGE_MODEL)?.trim() || 'gpt-image-2',
-    outputDir: expandHome(env.IMAGE_MCP_OUTPUT?.trim() || `${homedir()}/Documents/AI Images`),
+    apiKey: setting(env, 'OPENAI_API_KEY'),
+    model: setting(env, 'IMAGE_MCP_MODEL') ?? setting(env, 'INDESIGN_MCP_IMAGE_MODEL') ?? 'gpt-image-2',
+    outputDir: expandHome(setting(env, 'IMAGE_MCP_OUTPUT') ?? `${homedir()}/Documents/AI Images`),
   };
 }
 

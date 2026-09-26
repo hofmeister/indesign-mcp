@@ -59,6 +59,8 @@ for (const t of TARGETS) {
     repository: { type: 'git', url: 'https://github.com/hofmeister/indesign-mcp' },
     homepage: 'https://github.com/hofmeister/indesign-mcp',
     license: 'MIT',
+    privacy_policies: ['https://github.com/hofmeister/indesign-mcp#privacy'],
+    support: 'https://github.com/hofmeister/indesign-mcp/issues',
     keywords: ['indesign', 'idml', 'layout', 'design', 'print', 'openai', 'images'],
     server: {
       type: 'binary',
@@ -82,6 +84,7 @@ for (const t of TARGETS) {
           'Needed only for generating and editing pictures with AI (generate_image / edit_image). Leave empty to disable.',
         sensitive: true,
         required: false,
+        default: '',
       },
       documents_folder: {
         type: 'directory',
@@ -96,6 +99,7 @@ for (const t of TARGETS) {
         description:
           'A folder with your own .idml files that Claude may use as references (styles, masters, pages).',
         required: false,
+        default: '',
       },
       image_model: {
         type: 'string',

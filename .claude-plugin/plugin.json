@@ -26,17 +26,20 @@
       "type": "string",
       "title": "OpenAI API key (optional)",
       "description": "Only needed to generate or edit pictures for your layouts with OpenAI. Leave empty to turn picture generation off. OpenAI bills each picture to this key.",
-      "sensitive": true
+      "sensitive": true,
+      "default": ""
     },
     "documents_dir": {
       "type": "directory",
       "title": "Documents folder (optional)",
-      "description": "Where documents given by bare file name are saved. Empty means ~/Documents/InDesign MCP."
+      "description": "Where documents given by bare file name are saved. Empty means ~/Documents/InDesign MCP.",
+      "default": ""
     },
     "references_dir": {
       "type": "directory",
       "title": "Reference documents folder (optional)",
-      "description": "A folder with your own .idml exports that Claude may borrow styles, colours and master pages from."
+      "description": "A folder with your own .idml exports that Claude may borrow styles, colours and master pages from.",
+      "default": ""
     },
     "default_unit": {
       "type": "string",

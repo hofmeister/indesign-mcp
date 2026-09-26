@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import * as fontkit from 'fontkit';
+import { setting, splitPathList } from '../config.ts';
 import { BUNDLED_FONTS } from '../generated/fonts.ts';
 import { log } from '../log.ts';
 
@@ -54,8 +55,7 @@ export function systemFontDirs(): string[] {
       join(home, '.local/share/fonts'),
     );
   }
-  if (process.env.INDESIGN_MCP_FONT_DIRS)
-    dirs.push(...process.env.INDESIGN_MCP_FONT_DIRS.split(/[;:]/).filter(Boolean));
+  dirs.push(...splitPathList(setting(process.env, 'INDESIGN_MCP_FONT_DIRS')));
   return dirs.filter((d) => existsSync(d));
 }
 
